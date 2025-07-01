@@ -13,7 +13,8 @@ QEPlotter is a Python library designed to streamline the post-processing and vis
 ## 🚀 Installation
 
 ```bash
-pip install qeplotter
+pip install git+https://github.com/shubics/QEPlotter.git
+
 ```
 
 Or to work from the source:
