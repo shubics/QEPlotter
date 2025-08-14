@@ -1908,7 +1908,6 @@ _A1 = np.array([0.5, -np.sqrt(3)/2, 0.0])
 _A2 = np.array([0.5,  np.sqrt(3)/2, 0.0])
 _A3 = np.array([0.0,   0.0,       1.0])
 
-# ---------- SADECE '>>>' AYRAÇLI BLOK PARSER ---------- #
 def gather_blocks(text: str) -> List[Tuple[str, List[str]]]:
     blocks = []
     current: List[str] = []
@@ -2074,7 +2073,7 @@ def ibrav2cell(ibrav: int, cd: dict) -> np.ndarray:
         raise ValueError(f"ibrav={ibrav} tanımlı değil.")
     return cell*BOHR_TO_ANGSTROM
 
-# ---------- Yardımcılar ---------- #
+
 def cart_from_frac(cell: np.ndarray, frac: np.ndarray) -> np.ndarray:
     return frac @ cell
 
@@ -2135,7 +2134,7 @@ def classify_stacking(cell: np.ndarray, species: List[str], frac: np.ndarray) ->
     name,dist=min(((k,np.linalg.norm(Δ-v)) for k,v in CANON.items()), key=lambda x:x[1])
     return name if dist<SHIFT_TOL else "AA"
 
-# ---------- Ana çağrı ---------- #
+
 def analyse_file(path: Union[str, Path]):
     text = Path(path).read_text()
     blocks = gather_blocks(text)
