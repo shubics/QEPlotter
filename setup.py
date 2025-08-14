@@ -1,4 +1,4 @@
-from setuptools import setup, find_packages
+from pathlib import Path
 
 setup(
     name='qeplotter',
@@ -6,10 +6,15 @@ setup(
     packages=find_packages(),
     install_requires=[
         'matplotlib',
-        'numpy'
+        'numpy',
+        'seaborn',
+        'scipy',
+        'pandas',
     ],
     author='Şuayb Yıldız',
     description='Quantum ESPRESSO band structure and DOS plotting tool',
+    long_description=Path("README.md").read_text(),
+    long_description_content_type='text/markdown',
     url='https://github.com/shubics/QEPlotter',
     classifiers=[
         'Programming Language :: Python :: 3',
