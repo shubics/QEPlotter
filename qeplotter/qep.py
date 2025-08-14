@@ -252,7 +252,7 @@ def read_band_xdistances(band_file, kpath_file):
 # FATBAND FILE READING
 # ==============================
 
-def read_fatband_files(directory):
+def read_fatband_files(directory,spin=False,sub_orb=False):
     """
     Plots a band structure from a QE .bands.dat.gnu file.
     Optionally colors the bands using projections (fatband mode), if provided.
@@ -299,100 +299,191 @@ def read_fatband_files(directory):
     )
     """
 
-
-    # Pattern to extract atom number, element, and orbital from filename
-    pattern = re.compile(r'atm#(\d+)\(([A-Za-z]+)\)_wfc#\d+\(([spdfgpxyz]+)\)')
-    # Fallback for just element/orbital if atom number not present
-    fallback = re.compile(r'atm#\d+\(([A-Za-z]+)\)_wfc#\d+\(([spdfgpxyz]+)\)')
+    if spin:
+        pattern = re.compile(r'atm#(\d+)\(([A-Za-z]+)\)_wfc#\d+\(([spdfgpxyz]+)(?:_j[0-9.]+)?\)')
+        fallback = re.compile(r'atm#\d+\(([A-Za-z]+)\)_wfc#\d+\(([spdfgpxyz]+)(?:_j[0-9.]+)?\)')
+    else:
+        pattern = re.compile(r'atm#(\d+)\(([A-Za-z]+)\)_wfc#\d+\(([spdfgpxyz]+)\)')
+        fallback = re.compile(r'atm#\d+\(([A-Za-z]+)\)_wfc#\d+\(([spdfgpxyz]+)\)')
 
     file_list = sorted(glob.glob(os.path.join(directory, '*pdos*')))
     if not file_list:
         raise FileNotFoundError(f"No fatband files matching '*pdos*' found in {directory}")
+
     labels = []
-    ik0 = None
-    E0 = None
     W_list = []
-    N_k = None
-    N_e = None
-    # First pass: read all files
+    ik0 = E0 = None
+    N_k = N_e = None
+
+    # 2) read and optionally split weights
     for fn in file_list:
         base = os.path.basename(fn)
         m = pattern.search(base)
         if m:
-            atom_num = m.group(1)
-            elem     = m.group(2)
-            orb      = m.group(3)
-            atom_label = f"{elem}{atom_num}"  # e.g. 'Mo2', 'W1', 'S3'
-            labels.append((atom_label, orb))
+            atom_num, elem, orb = m.groups()
+            atom_label = f"{elem}{atom_num}"
         else:
             m2 = fallback.search(base)
             if m2:
-                elem, orb = m2.group(1), m2.group(2)
-                labels.append((elem, orb))
+                elem, orb = m2.groups()
+                atom_label = elem
             else:
-                labels.append(('?', '?'))
-        # Load data
-        try:
-            data = np.loadtxt(fn, comments='#')
-        except Exception as e:
-            raise ValueError(f"Failed to load {fn}: {e}")
+                orb = '?'
+                atom_label = base
+
+        data = np.loadtxt(fn, comments='#')
         if data.ndim != 2 or data.shape[1] < 3:
-            raise ValueError(f"Unexpected format in fatband file {fn}: need ≥3 columns, got {data.shape}")
+            raise ValueError(f"File {fn} needs ≥3 columns (got {data.shape})")
+
         ik = data[:, 0].astype(int)
         E = data[:, 1]
-        w = data[:, 2]
-        # On first file, record ik0/E0 to deduce grid shape
+
+        # record grid dims on first file
         if ik0 is None:
-            ik0 = ik.copy()
-            E0 = E.copy()
-            uniq_ik = np.unique(ik0)
-            N_k = len(uniq_ik)
-            counts = [np.count_nonzero(ik0 == kval) for kval in uniq_ik]
-            N_e0 = counts[0]
-            if not all(c == N_e0 for c in counts):
+            ik0, E0 = ik.copy(), E.copy()
+            uniq_k = np.unique(ik0)
+            N_k = len(uniq_k)
+            counts = [np.count_nonzero(ik0 == k) for k in uniq_k]
+            # allow truncation if ragged
+            if not all(c == counts[0] for c in counts):
                 N_e = min(counts)
-                print(f"Warning: varying rows per k in first file: counts={counts[:5]}..., truncating to N_e={N_e}")
+                print(f"Warning: varying rows per k in {fn}; truncating to N_e={N_e}")
             else:
-                N_e = N_e0
+                N_e = counts[0]
         else:
-            # Validate ik structure roughly matches first file
-            uniq_ik_i = np.unique(ik)
-            if len(uniq_ik_i) != N_k:
-                raise ValueError(f"File {fn}: unique ik count {len(uniq_ik_i)} != expected {N_k}")
-            counts_i = [np.count_nonzero(ik == kval) for kval in uniq_ik_i]
+            # validate subsequent files
+            uniq_i = np.unique(ik)
+            if len(uniq_i) != N_k:
+                raise ValueError(f"File {fn}: unique k count {len(uniq_i)} != expected {N_k}")
+            counts_i = [np.count_nonzero(ik == k) for k in uniq_i]
             if not all(c == counts_i[0] for c in counts_i):
                 min_e = min(counts_i)
-                print(f"Warning: file {fn} has varying rows per k, will truncate to min {min_e}")
+                print(f"Warning: {fn} has varying rows per k; truncating to {min_e}")
                 N_e = min(N_e, min_e)
+            elif counts_i[0] != N_e:
+                N_e = min(N_e, counts_i[0])
+
+        # choose weight columns
+        if not sub_orb:
+            # 1) Klasik toplam orbital ağırlığı
+            w = data[:, 2]
+            labels.append((atom_label, orb))
+            W_list.append((ik, E, w))
+
+        else:
+            ncols = data.shape[1]
+
+            # ---------- SOC (spin=True) dosyaları ----------
+            if spin:
+                # Dosya adından j değerini çek (örn. "_j1.5")
+                m_j = re.search(r'_j([0-9.]+)', base)
+                jtag = f"_j{m_j.group(1)}" if m_j else ""
+
+                # k-indeksi, E ve LDOS -> ilk 3 sütun
+                pdos_cols = list(range(3, ncols))
+                nsub = len(pdos_cols)
+
+                # Varsayılan etiketler (QE sıra­sı: ↑↑ ↓↓ ↑↓_Re ↑↓_Im)
+                default_names = ['upup', 'downdown', 'updown_re', 'updown_im']
+                subs = [f"{orb}{jtag}_{default_names[i] if i < 4 else f'c{i + 1}'}"
+                        for i in range(nsub)]
+                cols = pdos_cols
+
+            # ---------- SOC’suz (spin=False) dosyalar ----------
             else:
-                if counts_i[0] != N_e:
-                    N_e = min(N_e, counts_i[0])
-        W_list.append((ik, E, w))
-    # Build grids truncated to N_e
-    uniq_ik = np.unique(ik0)
-    N_k = len(uniq_ik)
-    # Build E_grid from first file
+                nsub = ncols - 2  # LDOS sonrası sütun sayısı
+
+                if orb == 's' and nsub >= 1:
+                    cols, subs = ([3], ['s']) if ncols >= 4 else ([2], ['s'])
+
+                elif orb == 'p' and nsub >= 3:
+                    cols, subs = [3, 4, 5], ['px', 'py', 'pz']
+
+                elif orb == 'd' and nsub >= 5:
+                    cols = [3, 4, 5, 6, 7][:nsub]
+                    subs = ['dxy', 'dyz', 'dz2', 'dxz', 'dx2-y2'][:nsub]
+
+                else:  # güvenli geriye dönüş
+                    cols, subs = [2], [orb]
+
+            # --------------- Sütunları kaydet ----------------
+            for col, sub in zip(cols, subs):
+                w = data[:, col]
+                labels.append((atom_label, sub))
+                W_list.append((ik, E, w))
+
+    # 3) build E_grid and W_grids
+    uniq_k = np.unique(ik0)
     E_grid = np.zeros((N_k, N_e))
-    for i, kval in enumerate(uniq_ik):
-        idxs = np.where(ik0 == kval)[0][:N_e]
-        if len(idxs) < N_e:
-            raise ValueError(f"Not enough rows for ik={kval} in first file: got {len(idxs)}, expected {N_e}")
+    for i, kpt in enumerate(uniq_k):
+        idxs = np.where(ik0 == kpt)[0][:N_e]
         E_grid[i, :] = E0[idxs]
-    # Build W_grids
+
     W_grids = []
     for ik, E, w in W_list:
         arr = np.zeros((N_k, N_e))
-        for i, kval in enumerate(uniq_ik):
-            idxs = np.where(ik == kval)[0][:N_e]
-            if len(idxs) < N_e:
-                raise ValueError(f"Not enough rows for ik={kval} in fatband file: got {len(idxs)}, expected {N_e}")
+        for i, kpt in enumerate(uniq_k):
+            idxs = np.where(ik == kpt)[0][:N_e]
             arr[i, :] = w[idxs]
         W_grids.append(arr)
-    return labels, uniq_ik, E_grid, W_grids
+
+    return labels, uniq_k, E_grid, W_grids
+
 
 # ==============================
 # PLOTTING FUNCTIONS
 # ==============================
+
+def overlay_band_plot(
+    band_file1, kpath_file1, band_file2, kpath_file2,
+    fermi_level=None, shift_fermi=False,
+    y_range=None, dpi=None, color1='red', color2='blue',
+    label1='Band1', label2='Band2'
+):
+    x1, bands1, ticks1, labels1, segs1 = read_band_xdistances(band_file1, kpath_file1)
+    x2, bands2, ticks2, labels2, segs2 = read_band_xdistances(band_file2, kpath_file2)
+
+    if shift_fermi and fermi_level is not None:
+        bands1 = bands1 - fermi_level
+        bands2 = bands2 - fermi_level
+
+    plt.figure(figsize=(8,6) if dpi is None else (8,6), dpi=dpi)
+
+    for i, band in enumerate(bands1):
+        for (s, e) in segs1:
+            plt.plot(x1[s:e+1], band[s:e+1], color=color1, lw=1, alpha=0.85, label=label1 if i == 0 else None)
+    for i, band in enumerate(bands2):
+        for (s, e) in segs2:
+            plt.plot(x2[s:e+1], band[s:e+1], color=color2, lw=1, alpha=0.85, label=label2 if i == 0 else None)
+
+    for tx in ticks1:
+        plt.axvline(tx, color='gray', ls='--', alpha=0.5)
+    plt.xticks(ticks1, labels1)
+    plt.xlabel('K-point Path')
+    plt.ylabel('Energy (eV)')
+    if y_range:
+        plt.ylim(y_range)
+    if fermi_level is not None:
+        y0 = 0.0 if shift_fermi else fermi_level
+        plt.axhline(y0, color='r', ls='--', lw=1.2, label=f'Fermi = {fermi_level:.2f} eV')
+    plt.grid(True, ls='--', alpha=0.4)
+    plt.legend()
+    plt.tight_layout()
+    plt.title("Overlayed Band Structures")
+
+    # --- Kaydetme kısmı ---
+    def sanitize(s):
+        return re.sub(r'\W+', '_', s).strip('_')
+    filename = f"BandStructure_{sanitize(label1)}_vs_{sanitize(label2)}.png"
+    save_dir = "saved"
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+    full_path = os.path.join(save_dir, filename)
+    plt.savefig(full_path, dpi=dpi, bbox_inches='tight')
+    print(f"Plot saved as {full_path}")
+
+    plt.show()
+
 
 def plot_band(
     band_file,
@@ -404,7 +495,9 @@ def plot_band(
     band_mode='normal',
     fatband_dir=None,
     cmap_name='tab10',
-        savefig=None
+        savefig=None,
+        spin=False
+    ,sub_orb=False
 ):
     """
        Plot the electronic band structure from Quantum ESPRESSO.
@@ -466,14 +559,14 @@ def plot_band(
         if fatband_dir is None:
             raise ValueError(f"band_mode='{band_mode}' requires fatband_dir with projection files")
         # 2) Read fatband projection grids
-        labels, uniq_ik, E_grid, W_grids = read_fatband_files(fatband_dir)
+        labels, uniq_ik, E_grid, W_grids = read_fatband_files(fatband_dir,spin,sub_orb)
 
         if len(uniq_ik) != N_k:
             print(f"Warning: fatband N_k={len(uniq_ik)} vs band file N_k={N_k}. They should match for correct coloring.")
 
           # strip off the atom numbers so all 'Bi1','Bi2',... become just 'Bi'
-        ch_labels = [f"{strip_number(a)}-{o}" for (a, o) in labels]
-        elems = [strip_number(a) for (a, _) in labels]
+        ch_labels = [f"{a}-{o}" for (a, o) in labels]
+        elems = [a for (a, _) in labels]
         orbs  = [o for (_,o) in labels]
 
         if band_mode == 'atomic':
@@ -739,7 +832,9 @@ def plot_fatbands(
     heat_vmax=None,
     dpi=None,
     layer_assignment=None ,
-        savefig=None  # <--- ADDED
+        savefig=None,
+        spin=False,
+        sub_orb=False
 ):
     """
       Plot fatbands from Quantum ESPRESSO data.
@@ -852,7 +947,7 @@ savefig : str, optional
     #   - Bubble modes ('atomic', etc.) ignore highlight_channel and color by dominant channel at each point.
     #   - 'layer' mode uses the 'layer_assignment' dict instead.
 
-    labels, uniq_ik, E_grid, W_grids = read_fatband_files(directory)
+    labels, uniq_ik, E_grid, W_grids = read_fatband_files(directory,spin,sub_orb)
     N_k, N_e = E_grid.shape
     if shift_fermi and fermi_level is not None:
         E_grid = E_grid - fermi_level
@@ -870,9 +965,9 @@ savefig : str, optional
         if shift_fermi and fermi_level is not None:
             E_dos = E_dos - fermi_level
     if mode == 'layer':
-        atom_name_fn = lambda x: x  # Numara da kullanılır
+        atom_name_fn = lambda x: x
     else:
-        atom_name_fn = strip_number  # Sadece element adı
+        atom_name_fn = strip_number
 
     elems = [atom_name_fn(a) for (a, _) in labels]
     orbs = [o for (_, o) in labels]
@@ -995,8 +1090,6 @@ savefig : str, optional
 
     elif mode in line_modes or mode == 'layer':
 
-
-
         if mode == 'layer':
 
             atom_name_fn = lambda x: x
@@ -1005,20 +1098,11 @@ savefig : str, optional
 
             atom_name_fn = strip_number
 
-        elems = []
+        elems = [a for (a, _) in labels]  # 'W1', 'S2', ...
+        orbs = [o for (_, o) in labels]
+        ch_labels = [f"{a}-{o}" for (a, o) in labels]
 
-        orbs = []
-
-        ch_labels = []
-
-        for label in labels:
-            elem, orb = label
-
-            elems.append(atom_name_fn(elem))
-
-            orbs.append(orb)
-
-            ch_labels.append(f"{atom_name_fn(elem)}-{orb}")
+        
 
         if mode == 'layer':
             # 1. Unique atom names from labels (now like 'W1', 'Mo2', 'S3' ...)
@@ -1078,7 +1162,9 @@ savefig : str, optional
 
                 if mode == 'o_atomic':
 
-                    valid = sorted(set(elems))
+                    valid = sorted(set([a for (a, _) in labels]))
+
+
 
                 elif mode == 'o_orbital':
 
@@ -1096,12 +1182,9 @@ savefig : str, optional
                 W2 = np.zeros((N_k, N_e))
 
                 if mode == 'o_atomic':
-
-                    for i, a in enumerate(elems):
-
+                    for i, (a, _) in enumerate(labels):
                         if a == key1:
                             W1 += W_grids[i]
-
                         elif a == key2:
                             W2 += W_grids[i]
 
@@ -1506,6 +1589,12 @@ def plot_from_file(
     dual=False,
     band_mode='normal',
     cmap_name='tab10',
+    band_file2=None,  # EKLEDİK!
+    kpath_file2=None,
+        color1='red',
+        color2='blue',
+        label1='Band 1',
+        label2='Band 2',
     s_min=10,
     s_max=100,
     weight_threshold=0.01,
@@ -1518,7 +1607,9 @@ def plot_from_file(
     heat_vmax=None,
     dpi=None,
     layer_assignment=None,
-        savefig=None
+        savefig=None,
+        spin=False,
+        sub_orb=False
 
 ):
     """
@@ -1625,11 +1716,26 @@ def plot_from_file(
             band_mode=band_mode,
             fatband_dir=fatband_dir,
             cmap_name=cmap_name,
-        savefig=savefig
+        savefig=savefig,
+            spin=spin,sub_orb=sub_orb
         )
     elif pt == 'dos':
         plot_dos(dos_file, fermi_level, shift_fermi, y_range, dpi=dpi,
         savefig=savefig)
+    elif plot_type == 'overlay_band':
+        overlay_band_plot(
+            band_file, kpath_file,
+            band_file2, kpath_file2,
+            fermi_level=fermi_level,
+            shift_fermi=shift_fermi,
+            y_range=y_range,
+            dpi=dpi,
+            color1=color1,
+            color2=color2,
+            label1=label1,
+            label2=label2
+        )
+
     elif pt == 'pdos':
         plot_pdos_dir(pdos_dir, fermi_level, shift_fermi, y_range, dpi=dpi,pdos_mode=pdos_mode,
         savefig=savefig)
@@ -1658,7 +1764,846 @@ def plot_from_file(
             heat_vmax=heat_vmax,
             dpi=dpi,
             layer_assignment=layer_assignment,
-        savefig=savefig  # <--- PASSED DOWN
+        savefig=savefig ,
+            spin=spin,
+            sub_orb=sub_orb# <--- PASSED DOWN
         )
     else:
         raise ValueError("Use 'band','dos','pdos', or 'fatbands' for plot_type")
+
+
+
+
+
+#================================================================#
+
+
+#Band gab dedector
+
+
+
+#================================================================#
+
+
+
+from pathlib import Path
+import numpy as np
+import re
+
+
+def parse_kpoints_crystal_b(kpt_file):
+    lines = Path(kpt_file).read_text().splitlines()
+    for i, ln in enumerate(lines):
+        if ln.strip().startswith('K_POINTS'):
+            break
+    lines = lines[i + 2:]
+    weights, labels = [], []
+    pat = re.compile(r"!(\S+)")
+    for ln in lines:
+        ln = ln.strip()
+        if not ln:
+            break
+        parts = ln.split()
+        weights.append(int(parts[3]))
+        m = pat.search(ln)
+        labels.append(m.group(1) if m else f"pt{len(labels)}")
+    edges = [0]
+    for w in weights:
+        edges.append(edges[-1] + w)
+    return weights, labels, edges
+
+
+def parse_bandgnu_blocks(band_file):
+    lines = Path(band_file).read_text().splitlines()
+    blocks, curr = [], []
+    for ln in lines:
+        if not ln.strip():
+            if curr:
+                blocks.append(curr)
+                curr = []
+        else:
+            curr.append(ln)
+    if curr:
+        blocks.append(curr)
+    nk, nb = len(blocks[0]), len(blocks)
+    kdist = np.zeros(nk)
+    E = np.zeros((nk, nb))
+    for b, blk in enumerate(blocks):
+        if len(blk) != nk:
+            raise ValueError(f"Band {b} has {len(blk)} pts, expected {nk}")
+        for i, ln in enumerate(blk):
+            p = ln.split()
+            if b == 0:
+                kdist[i] = float(p[0])
+            E[i, b] = float(p[1])
+    return kdist, E
+
+
+def segment_for_index(idx, edges, labels):
+    for i in range(len(edges)):
+        if idx == edges[i]:
+            return labels[i] if i < len(labels) else f"pt{i}"
+        if i < len(edges) - 1 and edges[i] < idx < edges[i + 1]:
+            return f"{labels[i]}–{labels[i + 1]}"
+    return "?"
+
+
+def detect_band_gap(band_file, kpt_file, fermi=None):
+    kdist, E = parse_bandgnu_blocks(band_file)
+    weights, labels, edges = parse_kpoints_crystal_b(kpt_file)
+
+    if fermi is None:
+        vbm = np.max(E)
+        cbm_candidates = E[E > vbm + 1e-6]
+        if cbm_candidates.size == 0:
+            return "ERROR: No CBM found above VBM."
+        cbm = np.min(cbm_candidates)
+        gap = cbm - vbm
+        fermi = 0.5 * (vbm + cbm)
+    else:
+        E_rel = E - fermi
+        vbm = np.max(E[E_rel <= 1e-7])
+        cbm = np.min(E[E_rel > 0])
+        gap = cbm - vbm
+
+    vbm_idx = np.argwhere(np.isclose(E, vbm)).tolist()[0]
+    cbm_idx = np.argwhere(np.isclose(E, cbm)).tolist()[0]
+    kv, bv = vbm_idx
+    kc, bc = cbm_idx
+
+    is_direct = (kv == kc)
+
+    seg_v = segment_for_index(kv, edges, labels)
+    seg_c = segment_for_index(kc, edges, labels)
+
+    result = f"{Path(band_file).stem}: Gap={gap:.3f} eV at Fermi={fermi:.3f} eV ({'direct' if is_direct else 'indirect'})\n"
+    result += f"  VBM: E={vbm:.3f} eV (kpt {kv}, band {bv}, {seg_v})\n"
+    result += f"  CBM: E={cbm:.3f} eV (kpt {kc}, band {bc}, {seg_c})\n"
+    if not is_direct:
+        result += f"  Indirect: VBM at {seg_v}, CBM at {seg_c}\n"
+
+    print(result)
+
+#================================================================#
+
+
+#Bilayer_analyezer
+
+
+
+#================================================================#
+
+
+import re
+from collections import Counter
+from itertools import combinations
+from pathlib import Path
+from typing import List, Sequence, Tuple, Union
+import numpy as np
+
+BOHR_TO_ANGSTROM = 0.529177
+PLANAR_TOL = 0.25
+SHIFT_TOL  = 0.12
+_A1 = np.array([0.5, -np.sqrt(3)/2, 0.0])
+_A2 = np.array([0.5,  np.sqrt(3)/2, 0.0])
+_A3 = np.array([0.0,   0.0,       1.0])
+
+# ---------- SADECE '>>>' AYRAÇLI BLOK PARSER ---------- #
+def gather_blocks(text: str) -> List[Tuple[str, List[str]]]:
+    blocks = []
+    current: List[str] = []
+    label = None
+    auto = 1
+    for line in text.splitlines():
+        m = re.match(r'^\s*>>>\s*(\S+)', line)
+        if m:
+            if current and any(s.strip() for s in current):
+                blocks.append((label if label else str(auto), current))
+                auto += 1
+            label = m.group(1)
+            current = []
+        else:
+            current.append(line)
+    if current and any(s.strip() for s in current):
+        blocks.append((label if label else str(auto), current))
+    return blocks
+
+# ---------- QE PARSER ---------- #
+def parse_qe_block(lines: Sequence[str]) -> Tuple[np.ndarray, List[str], np.ndarray]:
+    ibrav = None
+    celldm = {}
+    cell_parameters = None
+    cell_units  = 'alat'
+    atpos_units = 'alat'
+    species, coords = [], []
+
+    for ln in lines:
+        m = re.search(r'\bibrav\s*=\s*(-?\d+)', ln, re.I)
+        if m: ibrav = int(m.group(1))
+        for k in range(1,7):
+            mk = re.search(rf'celldm\({k}\)\s*=\s*([0-9.eE+-]+)', ln, re.I)
+            if mk: celldm[k] = float(mk.group(1))
+
+    # CELL_PARAMETERS
+    for i, ln in enumerate(lines):
+        if "CELL_PARAMETERS" in ln.upper():
+            m = re.search(r'cell_parameters\s*\{?(\w+)?\}?', ln, re.I)
+            if m and m.group(1): cell_units = m.group(1).lower()
+            mat = [list(map(float, lines[j].split()[:3])) for j in range(i+1, i+4)]
+            cell_parameters = np.array(mat)
+            break
+
+    # ATOMIC_POSITIONS
+    at_start = None
+    for i, ln in enumerate(lines):
+        if "ATOMIC_POSITIONS" in ln.upper():
+            m = re.search(r'atomic_positions\s*\{?(\w+)?\}?', ln, re.I)
+            if m and m.group(1): atpos_units = m.group(1).lower()
+            at_start = i+1
+            break
+
+    if at_start is not None:
+        for ln in lines[at_start:]:
+            t = ln.strip()
+            if not t: continue
+            if (t.startswith('K_POINTS') or t.startswith('CELL_PARAMETERS') or
+                t.startswith('ATOMIC_SPECIES') or t.startswith('/') or t.startswith('&')):
+                break
+            toks = t.split()
+            if len(toks) < 4: continue
+            sp, x, y, z = toks[:4]
+            species.append(sp)
+            coords.append([float(x), float(y), float(z)])
+    coords = np.array(coords)
+
+    if len(species) == 0:
+        return None, [], np.zeros((0,3))
+
+    # cell
+    if cell_parameters is not None:
+        cell = cell_parameters.copy()
+        if cell_units == 'alat':
+            if 1 not in celldm:
+                raise ValueError("CELL_PARAMETERS {alat} var ama celldm(1) yok!")
+            cell *= celldm[1] * BOHR_TO_ANGSTROM
+        elif cell_units == 'bohr':
+            cell *= BOHR_TO_ANGSTROM
+    else:
+        if ibrav is None:
+            ibrav = _guess_ibrav_from_celldm(celldm)
+            if ibrav is None:
+                raise ValueError("Ne CELL_PARAMETERS var ne ibrav! (celldm kombinasyonu da yetersiz)")
+        cell = ibrav2cell(ibrav, celldm)
+
+    # frac
+    if atpos_units in ('crystal','crystal_sg','alat'):
+        frac = coords
+    elif atpos_units == 'bohr':
+        cart = coords * BOHR_TO_ANGSTROM
+        frac = cart @ np.linalg.inv(cell)
+    elif atpos_units == 'angstrom':
+        cart = coords
+        frac = cart @ np.linalg.inv(cell)
+    elif atpos_units == 'cartesian':
+        # eğer CELL_PARAMETERS yoksa ölçek tahmini:
+        if cell_parameters is None and '1' in celldm and cell_units == 'alat':
+            cart = coords * celldm.get(1,1.0) * BOHR_TO_ANGSTROM
+        elif cell_parameters is None and cell_units == 'bohr':
+            cart = coords * BOHR_TO_ANGSTROM
+        else:
+            cart = coords
+        frac = cart @ np.linalg.inv(cell)
+    else:
+        raise ValueError(f"Desteklenmeyen ATOMIC_POSITIONS birimi: {atpos_units}")
+
+    return cell, species, frac
+
+def _guess_ibrav_from_celldm(cd: dict) -> Union[int,None]:
+    """celldm kombinasyonundan olası ibrav tahmini."""
+    if 1 in cd and 3 in cd and len(cd)==2:
+        return 4  # hex
+    if 1 in cd and 2 in cd and 3 in cd and len(cd)==3:
+        return 8  # simple orthorhombic
+    if 1 in cd and len(cd)==1:
+        return 1  # cubic
+    # daha fazlasını istersen ekle
+    return None
+
+def ibrav2cell(ibrav: int, cd: dict) -> np.ndarray:
+    a = cd.get(1, 1.0)
+    if   ibrav == 1:  cell = np.eye(3)*a
+    elif ibrav == 2:  cell = a*np.array([[0,0.5,0.5],[0.5,0,0.5],[0.5,0.5,0]])
+    elif ibrav == 3:  cell = a*np.array([[-0.5,0.5,0.5],[0.5,-0.5,0.5],[0.5,0.5,-0.5]])
+    elif ibrav == 4:
+        c = a*cd[3]
+        cell = np.array([[0.5*a,-np.sqrt(3)/2*a,0],[0.5*a,np.sqrt(3)/2*a,0],[0,0,c]])
+    elif ibrav == 5:
+        alpha = np.arccos(cd[4])
+        v = a*np.array([np.sin(alpha),0,np.cos(alpha)])
+        cell = np.vstack([v, np.roll(v,1), np.roll(v,2)])
+    elif ibrav == 6:
+        cell = np.diag([a,a,a*cd[3]])
+    elif ibrav == 7:
+        c = a*cd[3]
+        cell = np.array([[ a/2,-a/2, c/2],[ a/2, a/2, c/2],[-a/2,-a/2, c/2]])
+    elif ibrav == 8:
+        cell = np.diag([a,a*cd[2],a*cd[3]])
+    elif ibrav == 9:
+        b,c = a*cd[2], a*cd[3]
+        cell = np.array([[a,0,0],[0,b,0],[a/2,b/2,c]])
+    elif ibrav == 10:
+        b,c = a*cd[2], a*cd[3]
+        cell = np.array([[0,b/2,c/2],[a/2,0,c/2],[a/2,b/2,0]])
+    elif ibrav == 11:
+        b,c = a*cd[2], a*cd[3]
+        cell = np.array([[a/2,b/2,c/2],[-a/2,b/2,c/2],[0,-b/2,c/2]])
+    elif ibrav == 12:
+        b,c = a*cd[2], a*cd[3]; beta = cd[4]
+        cell = np.array([[a,0,0],[0,b,0],[c*np.cos(beta),0,c*np.sin(beta)]])
+    elif ibrav == 13:
+        b,c = a*cd[2], a*cd[3]; beta = cd[4]
+        cell = np.array([[a/2,-b/2,0],[a/2,b/2,0],[c*np.cos(beta),0,c*np.sin(beta)]])
+    elif ibrav == 14:
+        b,c = a*cd[2], a*cd[3]; cosb,cosa,cosg = cd[4], cd[5], cd[6]
+        sing = np.sqrt(1-cosg**2)
+        cell = np.array([[a,0,0],
+                         [b*cosg, b*sing, 0],
+                         [c*cosa, c*(cosb-cosa*cosg)/sing,
+                          c*np.sqrt(1-cosa**2-((cosb-cosa*cosg)/sing)**2)]])
+    else:
+        raise ValueError(f"ibrav={ibrav} tanımlı değil.")
+    return cell*BOHR_TO_ANGSTROM
+
+# ---------- Yardımcılar ---------- #
+def cart_from_frac(cell: np.ndarray, frac: np.ndarray) -> np.ndarray:
+    return frac @ cell
+
+def compute_all_z_distances(cart: np.ndarray):
+    for i,j in combinations(range(len(cart)),2):
+        yield i,j,abs(cart[j,2]-cart[i,2])
+
+def compute_all_distances(cart: np.ndarray):
+    for i,j in combinations(range(len(cart)),2):
+        yield i,j,float(np.linalg.norm(cart[j]-cart[i]))
+
+def split_layers(frac: np.ndarray) -> Tuple[List[int], List[int]]:
+    if len(frac)==0: return [],[]
+    z = frac[:,2]
+    order = np.argsort(z)
+    gaps  = np.diff(z[order])
+    if len(gaps)==0: return list(range(len(frac))), []
+    k   = np.argmax(gaps)+1
+    thr = (z[order][k-1]+z[order][k])/2
+    lower = [i for i,v in enumerate(z) if v<=thr]
+    upper = [i for i,v in enumerate(z) if v> thr]
+    return lower, upper
+
+def custom_labeling(species: List[str]) -> List[str]:
+    cnt, labels = {}, []
+    for s in species:
+        cnt[s]=cnt.get(s,0)+1
+        labels.append(f"{s}{cnt[s]}")
+    return labels
+
+def classify_stacking(cell: np.ndarray, species: List[str], frac: np.ndarray) -> str:
+    if len(frac)==0: return "NO_ATOMS"
+    metal = min(Counter(species), key=species.count)
+    lower, upper = split_layers(frac)
+    cart = cart_from_frac(cell, frac)
+    pairs=set()
+    for i in upper:
+        for j in lower:
+            d = cart[i]-cart[j]; d[2]=0
+            if np.linalg.norm(d)<PLANAR_TOL:
+                pairs.add((species[i]==metal, species[j]==metal))
+    mm = any(pi and pj for pi,pj in pairs)
+    xx = any((not pi) and (not pj) for pi,pj in pairs)
+    mx = any(pi and (not pj) for pi,pj in pairs)
+    xm = any((not pi) and pj for pi,pj in pairs)
+    if mx and xm: return 'AA′'
+    if xx and not(mm or mx or xm): return 'A′B'
+    if xm and not(mm or mx or xx): return 'AB'
+    if mm and not(xx or mx or xm): return 'AB′'
+    disp=[]
+    for i in upper:
+        if species[i]!=metal: continue
+        dv = frac[lower,:2]-frac[i,:2]; dv -= np.round(dv)
+        disp.append(dv[np.argmin(np.linalg.norm(dv,axis=1))])
+    if not disp: return 'AA'
+    Δ = np.mod(np.mean(disp,axis=0),1)
+    CANON={"AA":np.array([0,0]),"AB":np.array([1/3,2/3]),"AB′":np.array([2/3,1/3])}
+    name,dist=min(((k,np.linalg.norm(Δ-v)) for k,v in CANON.items()), key=lambda x:x[1])
+    return name if dist<SHIFT_TOL else "AA"
+
+# ---------- Ana çağrı ---------- #
+def analyse_file(path: Union[str, Path]):
+    text = Path(path).read_text()
+    blocks = gather_blocks(text)
+    for tag, blk in blocks:
+        try:
+            cell, species, frac = parse_qe_block(blk)
+            if len(species)==0:
+                print(f"[{tag}] EMPTY BLOCK, SKIPPED.")
+                continue
+        except Exception as e:
+            print(f"[{tag}] ERROR: {e}")
+            continue
+
+        cart = cart_from_frac(cell, frac)
+        a, c = np.linalg.norm(cell[0]), np.linalg.norm(cell[2])
+        stacking = classify_stacking(cell, species, frac)
+        labels   = custom_labeling(species)
+
+        print("="*40)
+        print(f"[{tag}]  a={a:.3f} Å  c={c:.3f} Å  → stacking: {stacking}")
+        print("-"*40)
+        print("All ΔZ (vertical) distances (Å):")
+        for i,j,dz in compute_all_z_distances(cart):
+            print(f"  {labels[i]}-{labels[j]}: {dz:.3f}")
+        print("\nAll 3D distances (Å):")
+        for i,j,d in compute_all_distances(cart):
+            print(f"  {labels[i]}-{labels[j]}: {d:.3f}")
+        print()
+
+
+
+#===================================================================
+
+
+#cONVERTOR FROM PROJ.OUT TO FATBANDS FILE
+
+
+
+#================================================================#
+
+import pathlib, re
+from collections import defaultdict
+from typing import Dict, List, Tuple, IO, Generator
+
+# ---------------------------------------------------------------------------
+# 1.  Parse the “state # …” table (maps global‑idx → atom / wfc / j / m_j)
+# ---------------------------------------------------------------------------
+_STATE_RX = re.compile(
+    r"state #\s*(\d+):\s*atom\s*(\d+)\s*\(\s*([A-Za-z]+)\s*\)"
+    r"\s*,\s*wfc\s*(\d+)\s*\(l=(\d+)\s+j=([0-9.]+)\s+m_j=\s*([-\d.]+)\)"
+)
+
+IdxInfo   = Dict[str, int | float | str]
+GroupKey  = Tuple[int, str, int, int, float]       # (atom, elem, wfc, l, j)
+
+
+def _parse_state_table(text: str) -> Tuple[Dict[int, IdxInfo], Dict[GroupKey, List[int]]]:
+    spin_orbit_coupled = "j=" in text
+
+    if spin_orbit_coupled:
+        state_rx = re.compile(
+            r"state #\s*(\d+):\s*atom\s*(\d+)\s*\(\s*([A-Za-z]+)\s*\)"
+            r"\s*,\s*wfc\s*(\d+)\s*\(l=(\d+)\s+j=([0-9.]+)\s+m_j=\s*([-\d.]+)\)"
+        )
+    else:
+        state_rx = re.compile(
+            r"state #\s*(\d+):\s*atom\s*(\d+)\s*\(\s*([A-Za-z]+)\s*\)\s*,\s*"
+            r"wfc\s*(\d+)\s*\(l=(\d+)\s*m=\s*\d+\)"
+        )
+
+    idx2info: Dict[int, IdxInfo] = {}
+    group2idx: Dict[Tuple, List[Tuple[float, int]]] = defaultdict(list)
+
+    for line in text.splitlines():
+        m = state_rx.search(line)
+        if not m:
+            continue
+
+        if spin_orbit_coupled:
+            gidx, atom, elem, wfc, l, j, mj = m.groups()
+            gidx, atom, wfc, l = map(int, (gidx, atom, wfc, l))
+            j, mj = float(j), float(mj)
+            info = dict(atom=atom, elem=elem.strip(), wfc=wfc, l=l, j=j, mj=mj)
+            key = (atom, elem.strip(), wfc, l, j)
+            group2idx[key].append((mj, gidx))
+        else:
+            gidx, atom, elem, wfc, l = m.groups()
+            gidx, atom, wfc, l = map(int, (gidx, atom, wfc, l))
+            info = dict(atom=atom, elem=elem.strip(), wfc=wfc, l=l)
+            key = (atom, elem.strip(), wfc, l)
+            group2idx[key].append((0.0, gidx))  # dummy m_j
+
+        idx2info[int(gidx)] = info
+
+    group_sorted: Dict[Tuple, List[int]] = {}
+    for key, lst in group2idx.items():
+        lst.sort(key=lambda t: t[0])
+        group_sorted[key] = [g for _, g in lst]
+
+    return idx2info, group_sorted
+
+
+
+# ---------------------------------------------------------------------------
+# 2.  Walk through k‑points / bands and collect |c|² weights
+# ---------------------------------------------------------------------------
+_K_RX      = re.compile(r"^\s*k\s*=\s*[0-9.eE+\-]+\s+[0-9.eE+\-]+\s+[0-9.eE+\-]+")
+_ENERGY_RX = re.compile(r"====\s*e\(\s*\d+\)\s*=\s*([-\d.Ee+]+)\s*eV")
+_COEFF_RX  = re.compile(r"([0-9.]+)\*\[\#\s*([0-9]+)\]")
+
+
+def _stream_states(fh: IO[str]) -> Generator[Tuple[int, float, Dict[int, float]], None, None]:
+    """Yield (ik, energy_eV, {global_idx: |c|², …}) for every band."""
+    ik = 0
+    collecting = False
+    current_E  = None
+    current_w  = defaultdict(float)
+
+    for line in fh:
+        if _K_RX.match(line):
+            # flush last band of previous k‑point
+            if collecting and current_E is not None:
+                yield ik, current_E, current_w
+                collecting, current_E = False, None
+                current_w = defaultdict(float)
+            ik += 1
+            continue
+
+        mE = _ENERGY_RX.match(line)
+        if mE:
+            if collecting and current_E is not None:          # flush previous
+                yield ik, current_E, current_w
+            current_E  = float(mE.group(1))
+            current_w  = defaultdict(float)
+            collecting = True
+            continue
+
+        if collecting:
+            for amp, idx in _COEFF_RX.findall(line):
+                current_w[int(idx)] += float(amp) ** 2
+
+    # flush very last band
+    if collecting and current_E is not None:
+        yield ik, current_E, current_w
+
+
+# ---------------------------------------------------------------------------
+# 3.  Utility for filenames
+# ---------------------------------------------------------------------------
+_L2SYM = {0: "s", 1: "p", 2: "d", 3: "f", 4: "g"}
+def _orb_sym(l: int) -> str:
+    return _L2SYM.get(l, f"l{l}")
+
+
+def _make_filename(outdir: pathlib.Path, key: Tuple) -> pathlib.Path:
+    atom, elem, wfc, l = key[:4]  # her zaman bu dördü var
+    j = key[4] if len(key) > 4 else None  # j varsa al, yoksa None
+
+    if j is not None:
+        jstr = f"{j:.1f}".rstrip("0").rstrip(".")
+        filename = f"fatbands.pdos_atm#{atom}({elem})_wfc#{wfc}({_orb_sym(l)}_j{jstr})"
+    else:
+        filename = f"fatbands.pdos_atm#{atom}({elem})_wfc#{wfc}({_orb_sym(l)})"
+
+    return outdir / filename
+
+
+
+# ---------------------------------------------------------------------------
+# 4.  Public API
+# ---------------------------------------------------------------------------
+def convert_consistent(proj_out: str | pathlib.Path,
+                       outdir: str | pathlib.Path = "BMS_pdos",
+                       *,
+                       overwrite: bool = True,
+                       verbose: bool = True) -> None:
+    """
+    Write one **fatbands** file per projector group with *identical* rows
+    per k‑point/band, avoiding “varying rows per k” warnings.
+    """
+    proj_out = pathlib.Path(proj_out)
+    outdir   = pathlib.Path(outdir)
+    outdir.mkdir(parents=True, exist_ok=True)
+
+    text = proj_out.read_text(errors="ignore")
+    idx2info, group2idx = _parse_state_table(text)
+    all_groups = list(group2idx)                    # fixed order
+
+    # open one file per group and write headers
+    open_files: Dict[GroupKey, Tuple[IO[str], List[int]]] = {}
+    for key in all_groups:
+        path = _make_filename(outdir, key)
+        if path.exists() and not overwrite:
+            raise FileExistsError(path)
+        fh = path.open("w")
+        idx_list = group2idx[key]
+        header = "# ik    E (eV)   ldos(E)" + "".join(
+            f"   pdos(E)_{i+1}" for i in range(len(idx_list))
+        ) + "\n"
+        fh.write(header)
+        open_files[key] = (fh, idx_list)
+
+    # stream states
+    with proj_out.open("r", errors="ignore") as fh:
+        for ik, E, weights in _stream_states(fh):
+            # initialise zeros
+            ldos = {k: 0.0 for k in all_groups}
+            cols = {k: [0.0] * len(group2idx[k]) for k in all_groups}
+
+            # fill weights we have
+            for gidx, w in weights.items():
+                info = idx2info[gidx]
+                if "j" in info:
+                    key = (info["atom"], info["elem"], info["wfc"], info["l"], info["j"])
+                else:
+                    key = (info["atom"], info["elem"], info["wfc"], info["l"])
+
+                col  = group2idx[key].index(gidx)
+                ldos[key]         += w
+                cols[key][col]     = w
+
+            # write one row per group
+            for key in all_groups:
+                fh_out, _ = open_files[key]
+                row = f"{ik:4d}  {E:10.5f}  {ldos[key]:.6e}" + "".join(
+                      f"  {c:.6e}" for c in cols[key]) + "\n"
+                fh_out.write(row)
+
+            if verbose and ik % 10 == 0:
+                print(f"Processed k‑point {ik}", end="\r")
+
+    # close files
+    for fh, _ in open_files.values():
+        fh.close()
+    if verbose:
+        print(f"\nDone – wrote {len(open_files)} projector files to '{outdir}'.")
+
+
+        #================================================================
+        #soc converter
+
+        #=================================================================
+# -*- coding: utf-8 -*-
+"""
+soc2ml.py  –  Re‑project Quantum‑ESPRESSO *projwfc* ``proj.out`` files that include
+spin–orbit coupling (SOC) onto the usual \((\ell,m_{\ell})\) basis and **write one
+fatbands/PDOS‑style file per (atom, wfc, \ell)** exactly like QE does in the
+scalar‑relativistic case, e.g.
+
+```
+fatbands.pdos_atm#1(Mo)_wfc#3(d)
+```
+
+Each output file contains *one* column for the total local DOS of that projector
+and *2\ell+1* ``pdos(E)_k`` columns – one for every \(m_{\ell}=-\ell,\dots,\ell\).
+The first column is always the sum of the others, so downstream tools (gnuplot,
+pyprocar, sumo, …) will work exactly as before.
+
+---------------  Quick use  ---------------
+>>> from soc2ml import convert_soc_proj_to_ml
+>>> convert_soc_proj_to_ml("proj.out", outdir="MLM_pdos")
+
+----------------------------------------------------------------------
+"""
+# -*- coding: utf-8 -*-
+"""
+soc2ml.py  –  Convert Quantum‑ESPRESSO *projwfc* ``proj.out`` that were run
+with spin–orbit coupling so that you obtain ordinary fatbands / PDOS files in the
+(ℓ, mₗ) basis — identical naming to scalar‑relativistic QE output, e.g.
+
+    fatbands.pdos_atm#1(Mo)_wfc#3(d)
+
+Each file has the standard layout
+
+    ik   E(eV)   ldos(E)   pdos(E)_1 … pdos(E)_(2ℓ+1)
+
+where ``ldos(E)`` is the sum over the 2ℓ+1 mₗ columns.  Works with gnuplot,
+pyprocar, sumo and similar tools out‑of‑the‑box.
+
+---------------------------------------------------------------------
+Quick use
+---------------------------------------------------------------------
+>>> from soc2ml import convert_soc_proj_to_ml
+>>> convert_soc_proj_to_ml("projwfc.out", outdir="MLM_pdos")
+---------------------------------------------------------------------
+
+
+"""
+
+import pathlib
+import re
+from collections import defaultdict
+from typing import Dict, List, Tuple, IO, Generator
+
+# -----------------------------------------------------------------------------
+# 0.  Clebsch–Gordan helper using *sympy*
+# -----------------------------------------------------------------------------
+from sympy.physics.wigner import clebsch_gordan as _CG
+from sympy               import Rational as _R
+
+# simple memoisation because the same (l,j,mj,ml) pairs repeat a lot
+_CG_CACHE: Dict[Tuple[int, float, float, int], float] = {}
+
+def _cg_prob(l: int, j: float, mj: float, ml: int) -> float:
+    """Return  ∑_{m_s=±½} |⟨l ml;½ m_s | l j m_j⟩|²  (Clebsch–Gordan)."""
+    prob = 0.0
+    for m_s in (-0.5, +0.5):
+        if abs(ml - (mj - m_s)) < 1e-8:            # selection rule
+            prob += float(_CG(l, _R(1, 2), j, ml, m_s, mj) ** 2)
+    return prob
+
+def _cg_cached(l: int, j: float, mj: float, ml: int) -> float:
+    key = (l, j, mj, ml)
+    if key not in _CG_CACHE:
+        _CG_CACHE[key] = _cg_prob(l, j, mj, ml)
+    return _CG_CACHE[key]
+
+# -----------------------------------------------------------------------------
+# 1.  Parse the “state # …” table  (global‑index → quantum numbers)
+# -----------------------------------------------------------------------------
+# Capture groups:  state, atom, element, wfc, l, j, mj   (= 7)
+_RX_SOC = re.compile(
+    r"state #\s*(\d+):\s*atom\s*(\d+)\s*\(\s*([A-Za-z]+)\s*\)\s*,\s*"
+    r"wfc\s*(\d+)\s*\(l=(\d+)\s+j=([0-9./]+)\s+m_j=\s*([0-9.\-+/]+)\)"
+)
+# Capture groups:  state, atom, element, wfc, l, m  (= 6)
+_RX_COL = re.compile(
+    r"state #\s*(\d+):\s*atom\s*(\d+)\s*\(\s*([A-Za-z]+)\s*\)\s*,\s*"
+    r"wfc\s*(\d+)\s*\(l=(\d+)\s*m=\s*(\d+)\)"
+)
+
+IdxInfo   = Dict[str, int | float | str]
+GroupName = Tuple[int, str, int, int]   # atom, elem, wfc, l
+
+def _parse_state_table(text: str) -> Tuple[Dict[int, IdxInfo], bool]:
+    """Return (idx → info) and a boolean ‘is_soc’."""
+    idx2info: Dict[int, IdxInfo] = {}
+    is_soc = False
+
+    for ln in text.splitlines():
+        m = _RX_SOC.search(ln)
+        if m:                                   # SOC entry
+            g, atom, elem, wfc, l, j, mj = m.groups()
+            idx2info[int(g)] = dict(atom=int(atom), elem=elem.strip(),
+                                    wfc=int(wfc), l=int(l),
+                                    j=float(eval(j)), mj=float(eval(mj)))
+            is_soc = True
+            continue
+        m = _RX_COL.search(ln)                  # scalar‑rel. entry
+        if m:
+            g, atom, elem, wfc, l, mnum = m.groups()
+            ml = int(mnum) - int(l) - 1         # QE’s (1…2l+1) → (‑l…+l)
+            idx2info[int(g)] = dict(atom=int(atom), elem=elem.strip(),
+                                    wfc=int(wfc), l=int(l), ml=ml)
+    return idx2info, is_soc
+
+# -----------------------------------------------------------------------------
+# 2.  Iterate over k‑points / bands – collect |c|² weights
+# -----------------------------------------------------------------------------
+_K_RX = re.compile(r"^\s*k\s*=\s*[0-9.eE+\-]+\s+[0-9.eE+\-]+\s+[0-9.eE+\-]+")
+_E_RX = re.compile(r"====\s*e\(\s*\d+\)\s*=\s*([\-0-9.Ee+]+)\s*eV")
+_C_RX = re.compile(r"([0-9.]+)\*\[\#\s*(\d+)\]")
+
+def _stream_states(fh: IO[str]) -> Generator[Tuple[int, float, Dict[int, float]], None, None]:
+    """Yield  (ik, E_eV, {global_idx: |c|²})  for every band of every k‑point."""
+    ik, collecting, E, W = 0, False, None, defaultdict(float)
+    for ln in fh:
+        if _K_RX.match(ln):                      # new k‑point
+            if collecting and E is not None:
+                yield ik, E, W
+            ik, collecting, E, W = ik + 1, False, None, defaultdict(float)
+            continue
+        mE = _E_RX.match(ln)                    # new band
+        if mE:
+            if collecting and E is not None:
+                yield ik, E, W
+            E, collecting, W = float(mE.group(1)), True, defaultdict(float)
+            continue
+        if collecting:
+            for amp, idx in _C_RX.findall(ln):
+                W[int(idx)] += float(amp) ** 2
+    if collecting and E is not None:
+        yield ik, E, W
+
+# -----------------------------------------------------------------------------
+# 3.  User‑facing converter
+# -----------------------------------------------------------------------------
+_LSYM = {0: "s", 1: "p", 2: "d", 3: "f", 4: "g"}
+
+def _orb(l: int) -> str:               # helper for filenames
+    return _LSYM.get(l, f"l{l}")
+
+def convert_soc_proj_to_ml(
+    proj_out: str | pathlib.Path,
+    outdir: str | pathlib.Path = "MLM_pdos",
+    *,
+    overwrite: bool = True,
+    quiet: bool = False,
+) -> None:
+    """Convert SOC *projwfc* output to (l, m_l) resolved fatbands/PDOS files."""
+    proj_out = pathlib.Path(proj_out)
+    outdir   = pathlib.Path(outdir)
+
+    idx2info, is_soc = _parse_state_table(proj_out.read_text(errors="ignore"))
+    if not is_soc:
+        if not quiet:
+            print("[soc2ml]  File appears scalar‑relativistic – nothing to do.")
+        return
+
+    # ------------------------------------------------------------------
+    # prepare one output handle per (atom, elem, wfc, l)
+    # ------------------------------------------------------------------
+    outdir.mkdir(parents=True, exist_ok=True)
+    fhs: Dict[GroupName, IO[str]] = {}
+    for inf in idx2info.values():
+        key = (inf["atom"], inf["elem"], inf["wfc"], inf["l"])
+        if key in fhs:
+            continue
+        atom, el, wfc, l = key
+        fname = f"fatbands.pdos_atm#{atom}({el})_wfc#{wfc}({_orb(l)})"
+        path  = outdir / fname
+        if path.exists() and not overwrite:
+            raise FileExistsError(path)
+        cols   = 2 * l + 1
+        header = "# ik    E (eV)   ldos(E)" + "".join(
+            f"   pdos(E)_{i+1}" for i in range(cols)
+        ) + "\n"
+        fh = path.open("w"); fh.write(header); fhs[key] = fh
+
+    # map ml → column index per l once
+    ml_idx = {l: {ml: ml + l for ml in range(-l, l + 1)}
+              for l in {inf['l'] for inf in idx2info.values()}}
+
+    # ------------------------------------------------------------------
+    # stream states, distribute weights, write rows
+    # ------------------------------------------------------------------
+    with proj_out.open("r", errors="ignore") as fh_in:
+        for ik, E, W in _stream_states(fh_in):
+            ldos_row: Dict[GroupName, float] = defaultdict(float)
+            pdos_row: Dict[GroupName, List[float]] = {}
+
+            for gidx, w in W.items():
+                inf = idx2info[gidx]; l = inf["l"]
+                key = (inf["atom"], inf["elem"], inf["wfc"], l)
+                if key not in pdos_row:
+                    pdos_row[key] = [0.0] * (2 * l + 1)
+                j, mj = inf["j"], inf["mj"]
+                for ml in range(-l, l + 1):
+                    p = _cg_cached(l, j, mj, ml)
+                    if p:
+                        idx = ml_idx[l][ml]
+                        pdos_row[key][idx] += w * p
+                        ldos_row[key]      += w * p
+
+            # write one line to every open file
+            for key, fh in fhs.items():
+                l_ = key[3]
+                pdos_vals = pdos_row.get(key, [0.0] * (2 * l_ + 1))
+                fh.write(
+                    f"{ik:4d}  {E:12.6f}  {ldos_row[key]:.8e}" + "".join(
+                        f"  {v:.8e}" for v in pdos_vals
+                    ) + "\n"
+                )
+
+            if not quiet and ik % 10 == 0:
+                print(f"[soc2ml]  k‑point {ik}", end="\r")
+
+    for fh in fhs.values():
+        fh.close()
+    if not quiet:
+        print(f"\n[soc2ml]  Wrote {len(fhs)} files → {outdir}")
