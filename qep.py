@@ -481,10 +481,12 @@ def plot_band(
     band_mode='normal',
     fatband_dir=None,
     cmap_name='tab10',
-        save_dir="saved",
-        savefig=None, 
-        spin=False
-    ,sub_orb=False
+    save_dir="saved",
+    savefig=None, 
+    spin=False,
+    sub_orb=False,
+    plot_total_dos=False,
+    dos_file=None
 ):
     """
        Plot the electronic band structure from Quantum ESPRESSO.
@@ -516,6 +518,10 @@ def plot_band(
            Directory where the plot should be saved. Default is "saved".
        savefig : str, optional
            Filename for saving the plot. If None, the plot is only displayed.
+       plot_total_dos : bool, optional
+           If True, plots the total DOS (from `dos_file`) alongside the bands.
+       dos_file : str, optional
+           Path to the total DOS file (energy, DOS columns), required if `plot_total_dos=True`.
 
        Returns
        -------
@@ -528,20 +534,39 @@ def plot_band(
     if shift_fermi and fermi_level is not None:
         band_energies = band_energies - fermi_level
 
+    # --- PREPARE DOS DATA IF REQUESTED ---
+    if plot_total_dos:
+        if dos_file is None:
+            raise ValueError("dos_file must be provided when plot_total_dos=True")
+        dos_data = np.loadtxt(dos_file)
+        if dos_data.ndim != 2 or dos_data.shape[1] < 2:
+            raise ValueError(f"Unexpected DOS file format: {dos_file}")
+        E_dos = dos_data[:, 0]
+        DOS = dos_data[:, 1]
+        
+        if shift_fermi and fermi_level is not None:
+            E_dos = E_dos - fermi_level
 
-    if dpi is not None:
-        plt.figure(figsize=(8,6), dpi=dpi)
+    # --- SETUP FIGURE ---
+    if plot_total_dos:
+        if dpi is not None:
+            fig, (ax1, ax2) = plt.subplots(1, 2, gridspec_kw={'width_ratios': [3, 1]}, figsize=(10, 6), dpi=dpi, sharey=True)
+        else:
+            fig, (ax1, ax2) = plt.subplots(1, 2, gridspec_kw={'width_ratios': [3, 1]}, figsize=(10, 6), sharey=True)
     else:
-        plt.figure(figsize=(8,6))
-
+        if dpi is not None:
+            fig, ax1 = plt.subplots(1, 1, figsize=(8, 6), dpi=dpi)
+        else:
+            fig, ax1 = plt.subplots(1, 1, figsize=(8, 6))
+        ax2 = None
 
     if band_mode == 'normal' or band_mode is None:
         for band in band_energies:
             for (s,e) in seg_ranges:
                 if e > s:
-                    plt.plot(x_dist[s:e+1], band[s:e+1], 'k-', lw=1)
+                    ax1.plot(x_dist[s:e+1], band[s:e+1], 'k-', lw=1)
                 else:
-                    plt.plot(x_dist[s], band[s], 'k.', markersize=2)
+                    ax1.plot(x_dist[s], band[s], 'k.', markersize=2)
         title = 'Band Structure'
     else:
 
@@ -609,24 +634,56 @@ def plot_band(
             else:
                 imax = np.argmax(sums)
                 color = cmap(imax)
-            band_colors[b] = color
-
-        # 4) Plot each band with its color
-        for b, band in enumerate(band_energies):
-            col = band_colors[b]
+            
+            # Plot colored band
             for (s,e) in seg_ranges:
                 if e > s:
-                    y = band[s:e+1]
-                    x = x_dist[s:e+1]
-                    plt.plot(x, y, color=col, lw=1)
+                    ax1.plot(x_dist[s:e+1], band_energies[b, s:e+1], color=color, lw=1.5)
                 else:
-                    plt.plot(x_dist[s], band[s], 'o', color=col, markersize=3)
+                    ax1.plot(x_dist[s], band_energies[b, s], '.', color=color, markersize=3)
+        
+        # Legend for colored bands
+        for i, key in enumerate(unique_keys):
+            ax1.plot([], [], c=cmap(i), label=key, lw=2)
+        ax1.legend(fontsize='small', ncol=2, loc='best')
         title = f'Band Structure ({band_mode})'
 
+    # --- COMMON PLOTTING ---
+    ax1.set_xticks(tick_positions)
+    ax1.set_xticklabels(tick_labels)
+    ax1.set_xlabel('K-point Path')
+    ax1.set_ylabel('Energy (eV)')
+    if y_range:
+        ax1.set_ylim(y_range)
+    ax1.set_title(title)
+    ax1.grid(True, ls='--', alpha=0.3)
+    ax1.autoscale(enable=True, axis='x', tight=True)
 
-        for i, key in enumerate(unique_keys):
-            plt.plot([], [], color=cmap(i), label=key, lw=3)
-        plt.legend(fontsize='small', ncol=2, loc='best')
+    # --- TOTAL DOS PLOTTING ---
+    # --- TOTAL DOS PLOTTING ---
+    if plot_total_dos:
+        ax2.plot(DOS, E_dos, 'k-', lw=1)
+        ax2.set_xlabel('Density of States')
+        ax2.set_title("Total DOS")
+        if y_range:
+            ax2.set_ylim(y_range)
+        ax2.axvline(0, color='gray', ls='-', lw=0.5) # Zero DOS line
+        # Add Fermi level line (horizontal)
+        ax2.axhline(0, color='red', ls='--', lw=1.0, label='Fermi')
+        ax2.grid(True, ls='--', alpha=0.3)
+        # Hide Y-axis labels on DOS plot since they are shared
+        plt.setp(ax2.get_yticklabels(), visible=False)
+
+    plt.tight_layout()
+    if savefig:
+        if not os.path.exists(save_dir):
+            os.makedirs(save_dir)
+        out = os.path.join(save_dir, os.path.basename(savefig))
+        plt.savefig(out, dpi=dpi or plt.rcParams['figure.dpi'])
+        print(f"Saved figure to {out}")
+
+    plt.show()
+
 
 
     for tx in tick_positions:
@@ -2308,7 +2365,9 @@ def plot_from_file(
             cmap_name=cmap_name,
             save_dir=save_dir,
             savefig=savefig,
-            spin=spin,sub_orb=sub_orb
+            spin=spin,sub_orb=sub_orb,
+            plot_total_dos=plot_total_dos,
+            dos_file=dos_file
         )
     elif pt == 'dos':
         plot_dos(dos_file, fermi_level, shift_fermi, y_range, x_range=x_range, dpi=dpi,
