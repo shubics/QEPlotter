@@ -178,7 +178,7 @@ def render_dashboard():
                 else:
                     paths['fatband_dir'] = None
 
-            f_dos = st.file_uploader("Total DOS File (Optional)", type=["dos", "dat"], key="u_dos")
+            f_dos = st.file_uploader("Total DOS File (Optional)", key="u_dos")
             paths['dos_file'] = save_file(f_dos)
             
             if pt == "overlay_band":
@@ -236,6 +236,8 @@ def render_dashboard():
             fig_width = col_w.number_input("Width", 12)
             fig_height = col_h.number_input("Height", 6)
             args['dpi'] = st.number_input("DPI", 200)
+            if pt in ['dos', 'pdos']:
+                args['vertical'] = st.checkbox("Vertical Orientation (Energy on Y)", value=False)
             args['cmap_name'] = st.selectbox("Colormap", ["tab10", "magma", "viridis", "jet"])
             
             # Fatband specific (same as before)
