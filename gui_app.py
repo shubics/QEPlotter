@@ -192,21 +192,8 @@ def render_dashboard():
         with st.expander("⚙️ 2. Data Settings", expanded=True):
             # Auto-Fermi
             st.markdown("##### Fermi Energy")
-            c_f1, c_f2 = st.columns([1, 1])
-            scf_file = c_f1.file_uploader("Auto-detect from `scf.out`", type=["out", "in"])
-            
-            detected_fermi = 0.0
-            if scf_file:
-                # Cache lookup
-                scf_path = save_file(scf_file, subdir="scf")
-                val = get_fermi_from_scf(scf_path)
-                if val is not None:
-                    detected_fermi = val
-                    c_f1.success(f"Found E_F = {val} eV")
-                else:
-                    c_f1.warning("Not found in file")
-            
-            args['fermi_level'] = c_f2.number_input("Fermi Level (eV)", value=detected_fermi, format="%.4f")
+            c_f1, c_f2 = st.columns(2)
+            args['fermi_level'] = c_f1.number_input("Fermi Level (eV)", value=0.0, format="%.4f")
             args['shift_fermi'] = c_f2.checkbox("Shift E_F to 0", value=True)
 
             # Limits
@@ -356,7 +343,7 @@ def render_dashboard():
                         
                         buf = BytesIO()
                         fig.savefig(buf, format="png", dpi=args.get('dpi', 200), bbox_inches='tight')
-                        st.image(buf.getvalue(), caption="Plot Preview", width='match_parent')
+                        st.image(buf.getvalue(), caption="Plot Preview", use_column_width=True)
                         
                         st.download_button("💾 Download PNG", buf, "plot.png", "image/png")
                     else:
