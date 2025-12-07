@@ -2998,7 +2998,7 @@ def convert_consistent(proj_out: Union[str, pathlib.Path],
 
         #=================================================================
 # -*- coding: utf-8 -*-
-"""
+r"""
 soc2ml.py  –  Re‑project Quantum‑ESPRESSO *projwfc* ``proj.out`` files that include
 spin–orbit coupling (SOC) onto the usual \((\ell,m_{\ell})\) basis and **write one
 fatbands/PDOS‑style file per (atom, wfc, \ell)** exactly like QE does in the
