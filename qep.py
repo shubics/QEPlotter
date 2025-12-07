@@ -657,7 +657,7 @@ def plot_band(
 
     plt.show()
 
-def plot_dos(dos_file, fermi_level=None, shift_fermi=False, y_range=None, dpi=None,
+def plot_dos(dos_file, fermi_level=None, shift_fermi=False, y_range=None, x_range=None, dpi=None,
         save_dir="saved", savefig=None, vertical=False):
     """
     Plot the total Density of States (DOS) from a QE DOS file.
@@ -716,6 +716,8 @@ def plot_dos(dos_file, fermi_level=None, shift_fermi=False, y_range=None, dpi=No
         plt.xlabel('DOS')
         if y_range:
             plt.ylim(y_range)
+        if x_range:
+            plt.xlim(x_range)
     else:
         # Energy on X, DOS on Y
         plt.plot(E, DOS, 'k-', lw=1, label='Total DOS')
@@ -728,6 +730,8 @@ def plot_dos(dos_file, fermi_level=None, shift_fermi=False, y_range=None, dpi=No
         plt.ylabel('DOS')
         if y_range:
             plt.ylim(y_range)
+        if x_range:
+            plt.xlim(x_range)
     plt.title('Total DOS')
     plt.grid(True, ls='--', alpha=0.4)
     if fermi_level is not None:
@@ -1494,6 +1498,21 @@ def plot_fatbands(
 
         ax1.grid(True, ls='--', alpha=0.3)
 
+
+
+        # Total DOS panel for line/layer modes
+        if plot_total_dos:
+            if shift_fermi and fermi_level is not None:
+                E_dos_plot = E_dos
+            else:
+                E_dos_plot = E_dos
+            ax2.plot(DOS, E_dos_plot, 'k-', lw=1)
+            ax2.set_xlabel('DOS')
+            if y_range:
+                ax2.set_ylim(y_range)
+            ax2.axvline(0, color='gray', ls='--', lw=0.8)
+            ax2.grid(True, ls='--', alpha=0.3)
+
         plt.tight_layout()
         if savefig:
             if not os.path.exists(save_dir):
@@ -2165,6 +2184,7 @@ def plot_from_file(
     s_max=100,
     weight_threshold=0.01,
     y_range=None,
+    x_range=None,
     fermi_level=None,
     shift_fermi=False,
     plot_total_dos=False,
@@ -2174,8 +2194,6 @@ def plot_from_file(
     dpi=None,
     layer_assignment=None,
         save_dir="saved",
-        savefig=None,
-        spin=False,
         savefig=None,
         spin=False,
         sub_orb=False,
@@ -2293,7 +2311,7 @@ def plot_from_file(
             spin=spin,sub_orb=sub_orb
         )
     elif pt == 'dos':
-        plot_dos(dos_file, fermi_level, shift_fermi, y_range, dpi=dpi,
+        plot_dos(dos_file, fermi_level, shift_fermi, y_range, x_range=x_range, dpi=dpi,
         save_dir=save_dir, savefig=savefig, vertical=vertical)
     elif plot_type == 'overlay_band':
         overlay_band_plot(
