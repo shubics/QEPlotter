@@ -302,6 +302,12 @@ def render_dashboard():
 
                 # General controls
                 args['plot_total_dos'] = st.checkbox("Plot Total DOS side-by-side", value=False)
+                if args['plot_total_dos']:
+                    c_d1, c_d2 = st.columns(2)
+                    use_dlim = c_d1.checkbox("Set DOS X-Limit", value=False)
+                    if use_dlim:
+                        d_max = c_d2.number_input("Max DOS Value", value=10.0)
+                        args['x_range'] = (0, d_max)
 
 
             # Overlay specific
