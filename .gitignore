@@ -99,7 +99,8 @@ cython_debug/
 .cursorindexingignore
 
 # Streamlit
-.streamlit/
+.streamlit/*
+!.streamlit/config.toml
 
 # MacOS
 .DS_Store
