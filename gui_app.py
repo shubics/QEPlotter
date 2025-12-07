@@ -207,9 +207,58 @@ def render_dashboard():
                 # (Simplifying for brevity, keeping core logic)
                 fb_mode = st.selectbox("Mode", ["most", "atomic", "orbital", "element_orbital", "normal", "o_atomic", "o_orbital", "o_element_orbital", "heat_total", "heat_atomic", "heat_orbital", "heat_element_orbital", "layer"])
                 args['fatbands_mode'] = fb_mode
-                if "heat" in fb_mode or fb_mode in ['normal', 'most']:
-                     args['highlight_channel'] = st.text_input("Highlight", "Mo")
-                     args['overlay_bands_in_heat'] = st.checkbox("Overlay Lines", True)
+                # Highlight Logic
+                if "heat" in fb_mode or fb_mode in ['normal', 'most', 'o_orbital', 'o_atomic', 'o_element_orbital']:
+                     # Dual Mode for Line Plots
+                     if fb_mode in ['o_orbital', 'o_atomic', 'o_element_orbital']:
+                         args['dual'] = st.checkbox("Dual Channel Mode")
+                     
+                     if args.get('dual'):
+                         c_h1, c_h2 = st.columns(2)
+                         h1 = c_h1.text_input("Channel 1", "Mo")
+                         h2 = c_h2.text_input("Channel 2", "S")
+                         args['highlight_channel'] = (h1, h2)
+                     else:
+                         args['highlight_channel'] = st.text_input("Highlight Channel", "Mo")
+                     
+                     if "heat" in fb_mode:
+                        args['overlay_bands_in_heat'] = st.checkbox("Overlay Lines", True)
+
+                # Layer Assignment Logic
+                if fb_mode == 'layer':
+                    st.caption("Layer Mapping (Format: Atom:Layer)")
+                    layer_txt = st.text_area("Example: Mo1:L1, S2:L1, W3:L2", height=100)
+                    if layer_txt:
+                        try:
+                            # Parse "Atom:Layer, Atom2:Layer2" string to dict
+                            l_map = {}
+                            items = [x.strip() for x in layer_txt.split(',')]
+                            for item in items:
+                                if ':' in item:
+                                    k, v = item.split(':')
+                                    l_map[k.strip()] = v.strip()
+                            args['layer_assignment'] = l_map
+                        except:
+                            st.error("Invalid Layer Mapping format")
+
+            # --- D. ADVANCED SETTINGS ---
+            with st.expander("🛠️ 4. Advanced Plot Control"):
+                c_adv1, c_adv2 = st.columns(2)
+                
+                # Bubble / Heatmap controls
+                if pt == "fatbands":
+                    args['s_min'] = c_adv1.number_input("Min Bubble Size", 1.0, 100.0, 10.0)
+                    args['s_max'] = c_adv2.number_input("Max Bubble Size", 10.0, 500.0, 100.0)
+                    args['weight_threshold'] = c_adv1.number_input("Weight Threshold", 0.0, 1.0, 0.01)
+                    
+                    if "heat" in args.get('fatbands_mode', ''):
+                        args['heat_vmin'] = c_adv1.number_input("Heatmap Min Value", value=0.0)
+                        args['heat_vmax'] = c_adv2.number_input("Heatmap Max Value", value=0.0)
+                        if args['heat_vmax'] == 0.0: args['heat_vmax'] = None # None means auto
+
+                # General controls
+                args['plot_total_dos'] = st.checkbox("Plot Total DOS side-by-side", value=False)
+
 
             # Overlay specific
             if pt == "overlay_band":
