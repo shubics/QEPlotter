@@ -486,7 +486,8 @@ def plot_band(
     spin=False,
     sub_orb=False,
     plot_total_dos=False,
-    dos_file=None
+    dos_file=None,
+    x_range=None
 ):
     """
        Plot the electronic band structure from Quantum ESPRESSO.
@@ -652,58 +653,53 @@ def plot_band(
     ax1.set_xticks(tick_positions)
     ax1.set_xticklabels(tick_labels)
     ax1.set_xlabel('K-point Path')
-    ax1.set_ylabel('Energy (eV)')
+    
+    # Dynamic Y-label based on shift
+    ylabel = 'E - E_F (eV)' if (shift_fermi and fermi_level is not None) else 'Energy (eV)'
+    ax1.set_ylabel(ylabel)
+    
     if y_range:
         ax1.set_ylim(y_range)
     ax1.set_title(title)
     ax1.grid(True, ls='--', alpha=0.3)
     ax1.autoscale(enable=True, axis='x', tight=True)
-
-    # --- TOTAL DOS PLOTTING ---
-    # --- TOTAL DOS PLOTTING ---
-    if plot_total_dos:
-        ax2.plot(DOS, E_dos, 'k-', lw=1)
-        ax2.set_xlabel('Density of States')
-        ax2.set_title("Total DOS")
-        if y_range:
-            ax2.set_ylim(y_range)
-        ax2.axvline(0, color='gray', ls='-', lw=0.5) # Zero DOS line
-        # Add Fermi level line (horizontal)
-        ax2.axhline(0, color='red', ls='--', lw=1.0, label='Fermi')
-        ax2.grid(True, ls='--', alpha=0.3)
-        # Hide Y-axis labels on DOS plot since they are shared
-        plt.setp(ax2.get_yticklabels(), visible=False)
-
-    plt.tight_layout()
-    if savefig:
-        if not os.path.exists(save_dir):
-            os.makedirs(save_dir)
-        out = os.path.join(save_dir, os.path.basename(savefig))
-        plt.savefig(out, dpi=dpi or plt.rcParams['figure.dpi'])
-        print(f"Saved figure to {out}")
-
-    plt.show()
-
-
-
-    for tx in tick_positions:
-        plt.axvline(tx, color='gray', ls='--', alpha=0.6)
-
+    
+    # Add Fermi line to Band Plot
     if fermi_level is not None:
         y0 = 0.0 if shift_fermi else fermi_level
-        plt.axhline(y0, color='r', ls='--', lw=1.2, label=f'Fermi = {fermi_level:.2f} eV')
+        ax1.axhline(y0, color='r', ls='--', lw=1.0)
 
-    plt.xticks(tick_positions, tick_labels)
-    plt.xlabel('K-point Path')
-    
-    ylabel = 'E - E_F (eV)' if (shift_fermi and fermi_level is not None) else 'Energy (eV)'
-    plt.ylabel(ylabel)
-    if y_range:
-        plt.ylim(y_range)
-    plt.title(title)
-    plt.grid(True, ls='--', alpha=0.4)
-    if fermi_level is not None:
-        plt.legend()
+    # --- TOTAL DOS PLOTTING ---
+    if plot_total_dos:
+        # Side-by-side means Energy on Y, DOS on X (Standard Vertical Layout)
+        ax2.plot(DOS, E_dos, 'k-', lw=1, label='Total DOS')
+        ax2.set_xlabel('DOS')
+        ax2.set_title("Total DOS")
+        
+        # Share Y axis with band plot
+        if y_range:
+            ax2.set_ylim(y_range)
+        if x_range:
+            ax2.set_xlim(x_range)
+            
+        # Draw Fermi Line
+        if fermi_level is not None:
+             y0 = 0.0 if shift_fermi else fermi_level
+             # Show original Fermi value in legend, consistent with plot_dos
+             label_f = f'Fermi = {fermi_level:.2f} eV' 
+             ax2.axhline(y0, color='r', ls='--', lw=1.2, label=label_f)
+        else:
+             # Just a zero line if no fermi info
+             ax2.axhline(0, color='gray', ls='--', lw=0.8)
+
+        ax2.grid(True, ls='--', alpha=0.4)
+        
+        # Hide Y-axis labels on DOS plot since they are shared
+        plt.setp(ax2.get_yticklabels(), visible=False)
+        
+        if fermi_level is not None:
+             ax2.legend(fontsize='small', loc='upper right')
+
     plt.tight_layout()
     if savefig:
         if not os.path.exists(save_dir):
@@ -713,6 +709,11 @@ def plot_band(
         print(f"Saved figure to {out}")
 
     plt.show()
+
+
+
+
+
 
 def plot_dos(dos_file, fermi_level=None, shift_fermi=False, y_range=None, x_range=None, dpi=None,
         save_dir="saved", savefig=None, vertical=False):
@@ -954,7 +955,8 @@ def plot_fatbands(
         save_dir="saved",
         savefig=None,
         spin=False,
-        sub_orb=False
+        sub_orb=False,
+        x_range=None
 ):
     """
       Plot fatbands from Quantum ESPRESSO data.
@@ -1197,6 +1199,8 @@ def plot_fatbands(
             ax2.set_xlabel('DOS')
             if y_range:
                 ax2.set_ylim(y_range)
+            if x_range:
+                ax2.set_xlim(x_range)
             ax2.axvline(0, color='gray', ls='--', lw=0.8)
             ax2.grid(True, ls='--', alpha=0.3)
         plt.tight_layout()
@@ -1208,6 +1212,7 @@ def plot_fatbands(
             print(f"Saved figure to {out}")
 
         plt.show()
+        return
 
 
     elif mode in line_modes or mode == 'layer':
@@ -1567,6 +1572,8 @@ def plot_fatbands(
             ax2.set_xlabel('DOS')
             if y_range:
                 ax2.set_ylim(y_range)
+            if x_range:
+                ax2.set_xlim(x_range)
             ax2.axvline(0, color='gray', ls='--', lw=0.8)
             ax2.grid(True, ls='--', alpha=0.3)
 
@@ -1579,6 +1586,7 @@ def plot_fatbands(
             print(f"Saved figure to {out}")
 
         plt.show()
+        return
 
 
     elif mode in heat_modes:
@@ -1595,6 +1603,8 @@ def plot_fatbands(
             ax2.set_xlabel('DOS')
             if y_range:
                 ax2.set_ylim(y_range)
+            if x_range:
+                ax2.set_xlim(x_range)
             ax2.axvline(0, color='gray', ls='--', lw=0.8)
             ax2.grid(True, ls='--', alpha=0.3)
         plt.tight_layout()
@@ -1606,6 +1616,7 @@ def plot_fatbands(
             print(f"Saved figure to {out}")
 
         plt.show()
+        return
 
 
     elems = [atom_name_fn(a) for (a, _) in labels]
@@ -2367,7 +2378,8 @@ def plot_from_file(
             savefig=savefig,
             spin=spin,sub_orb=sub_orb,
             plot_total_dos=plot_total_dos,
-            dos_file=dos_file
+            dos_file=dos_file,
+            x_range=x_range
         )
     elif pt == 'dos':
         plot_dos(dos_file, fermi_level, shift_fermi, y_range, x_range=x_range, dpi=dpi,
@@ -2419,7 +2431,8 @@ def plot_from_file(
             save_dir=save_dir,
             savefig=savefig,
             spin=spin,
-            sub_orb=sub_orb# <--- PASSED DOWN
+            sub_orb=sub_orb,
+            x_range=x_range
         )
     else:
         raise ValueError("Use 'band','dos','pdos', or 'fatbands' for plot_type")
