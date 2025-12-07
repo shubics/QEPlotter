@@ -252,51 +252,18 @@ def read_band_xdistances(band_file, kpath_file):
 # FATBAND FILE READING
 # ==============================
 
-def read_fatband_files(directory,spin=False,sub_orb=False):
+def read_fatband_files(fatband_dir,spin=False,sub_orb=False):
     """
-    Plots a band structure from a QE .bands.dat.gnu file.
-    Optionally colors the bands using projections (fatband mode), if provided.
+    Reads fatband/PDOS files from a directory and extracts labels and weights.
 
     Parameters
     ----------
-    band_file : str
-        Path to band structure file (.bands.dat.gnu).
-    kpath_file : str
-        Path to k-path (K_POINTS crystal_b) file.
-    fermi_level : float or None
-        If set, the Fermi level is drawn as a horizontal dashed line.
-    shift_fermi : bool
-        If True, all energies are shifted so the Fermi level is at 0 eV.
-    y_range : tuple or None
-        Y-axis (energy) limits for the plot.
-    dpi : int or None
-        Plot DPI for saving or display.
-    band_mode : str
-        Band coloring mode: 'normal' (default, black lines), or
-        'atomic', 'orbital', 'element_orbital', 'most' (requires fatband_dir).
-    fatband_dir : str or None
-        If using a projection coloring mode, provide the directory containing PDOS/fatband files.
-    cmap_name : str
-        Name of the matplotlib colormap.
-    savefig : str or None
-        If provided, saves the figure to a file (in ./saved/ subfolder).
-
-    Notes
-    -----
-    - This function is mostly for standalone band structure plots.
-    - For full fatband bubble or line plots, use `plot_fatbands`.
-
-    Example
-    -------
-    plot_band(
-        band_file='bands.dat.gnu',
-        kpath_file='kpath.in',
-        fermi_level=-5.35,
-        shift_fermi=True,
-        band_mode='atomic',
-        fatband_dir='my_fatband_dir',
-        savefig='band_atomic.pdf'
-    )
+    fatband_dir : str
+        Directory containing PDOS/fatband files.
+    spin : bool
+        If True, looks for SOC filenames with j/mj info.
+    sub_orb : bool
+        If True, splits into sub-orbitals (m-resolved).
     """
 
     if spin:
@@ -306,9 +273,9 @@ def read_fatband_files(directory,spin=False,sub_orb=False):
         pattern = re.compile(r'atm#(\d+)\(([A-Za-z]+)\)_wfc#\d+\(([spdfgpxyz]+)\)')
         fallback = re.compile(r'atm#\d+\(([A-Za-z]+)\)_wfc#\d+\(([spdfgpxyz]+)\)')
 
-    file_list = sorted(glob.glob(os.path.join(directory, '*pdos*')))
+    file_list = sorted(glob.glob(os.path.join(fatband_dir, '*pdos*')))
     if not file_list:
-        raise FileNotFoundError(f"No fatband files matching '*pdos*' found in {directory}")
+        raise FileNotFoundError(f"No fatband files matching '*pdos*' found in {fatband_dir}")
 
     labels = []
     W_list = []
@@ -438,8 +405,20 @@ def overlay_band_plot(
     band_file1, kpath_file1, band_file2, kpath_file2,
     fermi_level=None, shift_fermi=False,
     y_range=None, dpi=None, color1='red', color2='blue',
-    label1='Band1', label2='Band2'
+    label1='Band1', label2='Band2',
+    save_dir="saved", savefig=None
 ):
+    """
+    Overlay two band structures on the same plot.
+
+    Parameters
+    ----------
+    ...
+    save_dir : str, optional
+        Directory where the plot should be saved. Default is "saved".
+    savefig : str, optional
+        Filename to save the plot.
+    """
     x1, bands1, ticks1, labels1, segs1 = read_band_xdistances(band_file1, kpath_file1)
     x2, bands2, ticks2, labels2, segs2 = read_band_xdistances(band_file2, kpath_file2)
 
@@ -460,7 +439,10 @@ def overlay_band_plot(
         plt.axvline(tx, color='gray', ls='--', alpha=0.5)
     plt.xticks(ticks1, labels1)
     plt.xlabel('K-point Path')
-    plt.ylabel('Energy (eV)')
+    
+    ylabel = 'E - E_F (eV)' if (shift_fermi and fermi_level is not None) else 'Energy (eV)'
+    plt.ylabel(ylabel)
+
     if y_range:
         plt.ylim(y_range)
     if fermi_level is not None:
@@ -474,8 +456,12 @@ def overlay_band_plot(
     # --- Kaydetme kısmı ---
     def sanitize(s):
         return re.sub(r'\W+', '_', s).strip('_')
-    filename = f"BandStructure_{sanitize(label1)}_vs_{sanitize(label2)}.png"
-    save_dir = "saved"
+    
+    if savefig:
+        filename = savefig
+    else:
+        filename = f"BandStructure_{sanitize(label1)}_vs_{sanitize(label2)}.png"
+        
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
     full_path = os.path.join(save_dir, filename)
@@ -495,7 +481,8 @@ def plot_band(
     band_mode='normal',
     fatband_dir=None,
     cmap_name='tab10',
-        savefig=None,
+        save_dir="saved",
+        savefig=None, 
         spin=False
     ,sub_orb=False
 ):
@@ -525,6 +512,8 @@ def plot_band(
            Directory with projection (fatband) files, required for colored band modes.
        cmap_name : str, optional
            Name of the matplotlib colormap for colored bands.
+       save_dir : str, optional
+           Directory where the plot should be saved. Default is "saved".
        savefig : str, optional
            Filename for saving the plot. If None, the plot is only displayed.
 
@@ -649,7 +638,9 @@ def plot_band(
 
     plt.xticks(tick_positions, tick_labels)
     plt.xlabel('K-point Path')
-    plt.ylabel('Energy (eV)')
+    
+    ylabel = 'E - E_F (eV)' if (shift_fermi and fermi_level is not None) else 'Energy (eV)'
+    plt.ylabel(ylabel)
     if y_range:
         plt.ylim(y_range)
     plt.title(title)
@@ -658,16 +649,16 @@ def plot_band(
         plt.legend()
     plt.tight_layout()
     if savefig:
-        SAVE_DIR = os.path.join(SCRIPT_DIR, "saved")
-        os.makedirs(SAVE_DIR, exist_ok=True)
-        out = os.path.join(SAVE_DIR, os.path.basename(savefig))
+        if not os.path.exists(save_dir):
+            os.makedirs(save_dir)
+        out = os.path.join(save_dir, os.path.basename(savefig))
         plt.savefig(out, dpi=dpi or plt.rcParams['figure.dpi'])
         print(f"Saved figure to {out}")
 
     plt.show()
 
 def plot_dos(dos_file, fermi_level=None, shift_fermi=False, y_range=None, dpi=None,
-        savefig=None):
+        save_dir="saved", savefig=None):
     """
     Plot the total Density of States (DOS) from a QE DOS file.
 
@@ -683,6 +674,8 @@ def plot_dos(dos_file, fermi_level=None, shift_fermi=False, y_range=None, dpi=No
         (ymin, ymax) limits for the DOS axis.
     dpi : int, optional
         Output resolution (dots per inch) for the plot.
+    save_dir : str, optional
+        Directory where the plot should be saved. Default is "saved".
     savefig : str, optional
         Filename for saving the figure. If None, the plot is only displayed.
 
@@ -690,7 +683,16 @@ def plot_dos(dos_file, fermi_level=None, shift_fermi=False, y_range=None, dpi=No
     -------
     None. Displays (and optionally saves) the DOS plot.
     """
-    data = np.loadtxt(dos_file)
+    try:
+        data = np.loadtxt(dos_file, comments='#')
+    except Exception as e:
+        # Fallback: sometimes QE files have a header line that loadtxt might miss if not starting with #
+        # Try to read skipping the first row if it fails
+        try:
+             data = np.loadtxt(dos_file, skiprows=1)
+        except Exception:
+             raise ValueError(f"Could not read DOS file {dos_file}. Check format. Error: {e}")
+
     if data.ndim != 2 or data.shape[1] < 2:
         raise ValueError(f"Unexpected DOS file format: {dos_file}")
     E = data[:, 0]
@@ -705,7 +707,10 @@ def plot_dos(dos_file, fermi_level=None, shift_fermi=False, y_range=None, dpi=No
     if fermi_level is not None:
         x0 = 0.0 if shift_fermi else fermi_level
         plt.axvline(x0, color='r', ls='--', lw=1.2, label=f'Fermi = {fermi_level:.2f} eV')
-    plt.xlabel('Energy (eV)')
+    
+    xlabel = 'E - E_F (eV)' if (shift_fermi and fermi_level is not None) else 'Energy (eV)'
+    plt.xlabel(xlabel)
+    
     plt.ylabel('DOS')
     if y_range:
         plt.ylim(y_range)
@@ -715,9 +720,9 @@ def plot_dos(dos_file, fermi_level=None, shift_fermi=False, y_range=None, dpi=No
         plt.legend()
     plt.tight_layout()
     if savefig:
-        SAVE_DIR = os.path.join(SCRIPT_DIR, "saved")
-        os.makedirs(SAVE_DIR, exist_ok=True)
-        out = os.path.join(SAVE_DIR, os.path.basename(savefig))
+        if not os.path.exists(save_dir):
+            os.makedirs(save_dir)
+        out = os.path.join(save_dir, os.path.basename(savefig))
         plt.savefig(out, dpi=dpi or plt.rcParams['figure.dpi'])
         print(f"Saved figure to {out}")
 
@@ -725,7 +730,7 @@ def plot_dos(dos_file, fermi_level=None, shift_fermi=False, y_range=None, dpi=No
 
 def plot_pdos_dir(pdos_dir, fermi_level=None,
                   shift_fermi=False, y_range=None, dpi=None,pdos_mode='atomic',
-        savefig=None):
+                  save_dir="saved", savefig=None):
     """
     Plot projected Density of States (PDOS) from a set of QE projwfc/pdos files.
 
@@ -746,6 +751,8 @@ def plot_pdos_dir(pdos_dir, fermi_level=None,
           - 'atomic': sum all orbitals for each atom type (e.g., all Mo, S, W)
           - 'orbital': sum all atoms for each orbital (e.g., all p, d)
           - 'element_orbital': show each atom-orbital pair separately (e.g., Mo-d, S-p)
+    save_dir : str, optional
+        Directory to save the plot. Default is "saved".
     savefig : str, optional
         Filename for saving the figure. If None, the plot is only displayed.
 
@@ -753,7 +760,9 @@ def plot_pdos_dir(pdos_dir, fermi_level=None,
     -------
     None. Displays (and optionally saves) the PDOS plot.
     """
-    pat = re.compile(r'atm#\d+\(([A-Za-z]+)\)_wfc#\d+\(([spdfgpxyz]+)\)')
+    pat = re.compile(r'atm#\d+\(([A-Za-z]+)\)_wfc#\d+\(([spdfgpxyz]+)(?:_j[0-9.]+)?\)') # Updated regex to catch _j for SOC files if present in filename
+    fallback_pat = re.compile(r'atm#\d+\(([A-Za-z]+)\)_wfc#\d+\(([spdfgpxyz]+)\)')
+
     files = glob.glob(os.path.join(pdos_dir, '*pdos*'))
     if not files:
         raise FileNotFoundError(f"No PDOS files found in {pdos_dir}")
@@ -763,8 +772,13 @@ def plot_pdos_dir(pdos_dir, fermi_level=None,
         base = os.path.basename(fn)
         m = pat.search(base)
         if not m:
+            m = fallback_pat.search(base)
+        
+        if not m:
             continue
+            
         elem, orb = m.group(1), m.group(2)
+        
         if pdos_mode == 'atomic':
             key = elem
         elif pdos_mode == 'orbital':
@@ -773,16 +787,40 @@ def plot_pdos_dir(pdos_dir, fermi_level=None,
             key = f"{elem}-{orb}"
         else:
             raise ValueError(f"Unknown pdos_mode: {pdos_mode}")
+            
         data = np.loadtxt(fn, comments='#')
         if data.ndim != 2 or data.shape[1] < 2:
             continue
+            
+        # Check consistency: Col 0 should be Energy (not integer!)
+        # Heuristic: if energies are all integers 0, 1, 2... it's likely a fatband file (k-index)
+        if np.all(data[:,0] == np.arange(data.shape[0])):
+             print(f"Warning: File {base} looks like a fatband file (Col 0 is index), but we expect Energy. Skipping to avoid bad plot.")
+             continue
+
         if E is None:
             E = data[:, 0].copy()
             if shift_fermi and fermi_level is not None:
                 E = E - fermi_level
-        pd = data[:, -1]
+                
+        # Handle SOC or multiple columns
+        # Standard QE PDOS: Col 1 = LDOS, Col 2... = m-resolved projections
+        # We usually want the LDOS column if available, or sum of projections.
+        if data.shape[1] >= 2:
+            # If Col 1 is LDOS (usually is), take it.
+            # If there are many columns (SOC has up, down, etc), usually Col 1 is still total for that projector?
+            # Actually for SOC: columns are "upup", "downdown", "updown_real", "updown_imag" etc in some versions?
+            # Or standard projwfc: Col 1 = LDOS, Col 2.. = projections.
+            # Let's sum from column 1 onwards creates the total weight for this projector file
+            # Wait, usually Col 1 is LDOS which IS the sum.
+            # Let's define pd as column 1 (LDOS)
+             pd = data[:, 1]
+        else:
+             pd = data[:, -1] # Fallback
+             
         grouped.setdefault(key, np.zeros_like(pd))
         grouped[key] += pd
+        
     if not grouped:
         raise RuntimeError("No PDOS channels matched; check filenames and pdos_mode")
     if dpi is not None:
@@ -794,7 +832,13 @@ def plot_pdos_dir(pdos_dir, fermi_level=None,
     if fermi_level is not None:
         x0 = 0.0 if shift_fermi else fermi_level
         plt.axvline(x0, color='r', ls='--', lw=1.2, label=f'Fermi = {fermi_level:.2f} eV')
-    plt.xlabel('Energy (eV)')
+    if fermi_level is not None:
+        x0 = 0.0 if shift_fermi else fermi_level
+        plt.axvline(x0, color='r', ls='--', lw=1.2, label=f'Fermi = {fermi_level:.2f} eV')
+    
+    xlabel = 'E - E_F (eV)' if (shift_fermi and fermi_level is not None) else 'Energy (eV)'
+    plt.xlabel(xlabel)
+
     plt.ylabel('Projected DOS')
     if y_range:
         plt.ylim(y_range)
@@ -803,16 +847,16 @@ def plot_pdos_dir(pdos_dir, fermi_level=None,
     plt.legend(fontsize='small', ncol=2)
     plt.tight_layout()
     if savefig:
-        SAVE_DIR = os.path.join(SCRIPT_DIR, "saved")
-        os.makedirs(SAVE_DIR, exist_ok=True)
-        out = os.path.join(SAVE_DIR, os.path.basename(savefig))
+        if not os.path.exists(save_dir):
+            os.makedirs(save_dir)
+        out = os.path.join(save_dir, os.path.basename(savefig))
         plt.savefig(out, dpi=dpi or plt.rcParams['figure.dpi'])
         print(f"Saved figure to {out}")
 
     plt.show()
 
 def plot_fatbands(
-    directory,
+    fatband_dir,
     kpath_file,
     band_file,
     mode='most',
@@ -832,6 +876,7 @@ def plot_fatbands(
     heat_vmax=None,
     dpi=None,
     layer_assignment=None ,
+        save_dir="saved",
         savefig=None,
         spin=False,
         sub_orb=False
@@ -843,61 +888,63 @@ def plot_fatbands(
       from QE projwfc files, supporting several visualization modes.
 
 
-Parameters
-----------
-directory : str
-    Directory containing fatband (PDOS/projwfc) files produced by Quantum ESPRESSO.
-kpath_file : str
-    Path to the QE K_POINTS file in "crystal_b" format (defines k-point path and high-symmetry labels).
-band_file : str
-    Path to the QE band structure file (usually ends with .bands.dat.gnu).
-mode : str, optional
-    Visualization mode for fatbands. Controls how channel-resolved information is displayed:
-      - 'most', 'atomic', 'orbital', 'element_orbital': Bubble modes (dominant channel per (k,E) as colored bubbles)
-      - 'normal', 'o_atomic', 'o_orbital', 'o_element_orbital': Line modes (band color encodes channel fraction)
-      - 'heat_total', 'heat_atomic', 'heat_orbital', 'heat_element_orbital': Heatmap modes (background color = channel weight)
-      - 'layer': Color bands by layer (requires `layer_assignment`).
-highlight_channel : str or list, optional
-    Channel(s) to highlight in line/heatmap modes.
-      - For 'o_atomic': atom label (e.g., 'Mo', 'W', 'S').
-      - For 'o_orbital': orbital label (e.g., 's', 'p', 'd').
-      - For 'o_element_orbital': combined label (e.g., 'Mo-d', 'S-p').
-      - For dual mode: list/tuple with two channels (e.g., ['Mo', 'S'] or ['d', 'p']).
-    Not used in bubble modes.
-dual : bool, optional
-    If True (with a list of two highlight channels), uses a colorbar to interpolate between the two channels along each band.
-    Only for line modes ('o_atomic', etc.). Useful for visualizing smooth mixing between channels.
-fermi_level : float, optional
-    Value of the Fermi energy (in eV). If set, can be used to shift the band/DOS plots such that the Fermi level is at zero.
-shift_fermi : bool, optional
-    If True, shifts all band energies and DOS so that the Fermi level appears at 0 eV on the plot.
-y_range : tuple or list, optional
-    (ymin, ymax) values for the energy axis (eV). Limits the displayed vertical range of the plot.
-cmap_name : str, optional
-    Name of the matplotlib colormap to use for coloring channels/bands (default: 'tab10').
-s_min : float, optional
-    Minimum marker size for bubbles or heatmap points (default: 10).
-s_max : float, optional
-    Maximum marker size for bubbles or heatmap points (default: 100).
-weight_threshold : float, optional
-    Fraction (0–1) of the global max channel weight to be plotted. Points with lower weight are omitted for clarity.
-plot_total_dos : bool, optional
-    If True, plots the total DOS (from `dos_file`) alongside the fatbands.
-dos_file : str, optional
-    Path to the total DOS file (energy, DOS columns), required if `plot_total_dos=True`.
-overlay_bands_in_heat : bool, optional
-    If True, overlays plain band structure lines on top of heatmap plots for visual reference.
-heat_vmin : float, optional
-    Minimum value for heatmap color normalization (default: data minimum).
-heat_vmax : float, optional
-    Maximum value for heatmap color normalization (default: data maximum).
-dpi : int, optional
-    Output resolution (dots per inch) for the plot figure.
-layer_assignment : dict, optional
-    Only for 'layer' mode. Dictionary mapping atom names (e.g., 'Mo1', 'S3') to 'top' or 'bottom' layer.
-savefig : str, optional
-    Filename for saving the generated plot (in a 'saved' directory within your project).
-    If not set, the plot is only displayed and not saved.
+    Parameters
+    ----------
+    fatband_dir : str
+        Directory containing fatband (PDOS/projwfc) files produced by Quantum ESPRESSO.
+    kpath_file : str
+        Path to the QE K_POINTS file in "crystal_b" format (defines k-point path and high-symmetry labels).
+    band_file : str
+        Path to the QE band structure file (usually ends with .bands.dat.gnu).
+    mode : str, optional
+        Visualization mode for fatbands. Controls how channel-resolved information is displayed:
+          - 'most', 'atomic', 'orbital', 'element_orbital': Bubble modes (dominant channel per (k,E) as colored bubbles)
+          - 'normal', 'o_atomic', 'o_orbital', 'o_element_orbital': Line modes (band color encodes channel fraction)
+          - 'heat_total', 'heat_atomic', 'heat_orbital', 'heat_element_orbital': Heatmap modes (background color = channel weight)
+          - 'layer': Color bands by layer (requires `layer_assignment`).
+    highlight_channel : str or list, optional
+        Channel(s) to highlight in line/heatmap modes.
+          - For 'o_atomic': atom label (e.g., 'Mo', 'W', 'S').
+          - For 'o_orbital': orbital label (e.g., 's', 'p', 'd').
+          - For 'o_element_orbital': combined label (e.g., 'Mo-d', 'S-p').
+          - For dual mode: list/tuple with two channels (e.g., ['Mo', 'S'] or ['d', 'p']).
+        Not used in bubble modes.
+    dual : bool, optional
+        If True (with a list of two highlight channels), uses a colorbar to interpolate between the two channels along each band.
+        Only for line modes ('o_atomic', etc.). Useful for visualizing smooth mixing between channels.
+    fermi_level : float, optional
+        Value of the Fermi energy (in eV). If set, can be used to shift the band/DOS plots such that the Fermi level is at zero.
+    shift_fermi : bool, optional
+        If True, shifts all band energies and DOS so that the Fermi level appears at 0 eV on the plot.
+    y_range : tuple or list, optional
+        (ymin, ymax) values for the energy axis (eV). Limits the displayed vertical range of the plot.
+    cmap_name : str, optional
+        Name of the matplotlib colormap to use for coloring channels/bands (default: 'tab10').
+    s_min : float, optional
+        Minimum marker size for bubbles or heatmap points (default: 10).
+    s_max : float, optional
+        Maximum marker size for bubbles or heatmap points (default: 100).
+    weight_threshold : float, optional
+        Fraction (0–1) of the global max channel weight to be plotted. Points with lower weight are omitted for clarity.
+    plot_total_dos : bool, optional
+        If True, plots the total DOS (from `dos_file`) alongside the fatbands.
+    dos_file : str, optional
+        Path to the total DOS file (energy, DOS columns), required if `plot_total_dos=True`.
+    overlay_bands_in_heat : bool, optional
+        If True, overlays plain band structure lines on top of heatmap plots for visual reference.
+    heat_vmin : float, optional
+        Minimum value for heatmap color normalization (default: data minimum).
+    heat_vmax : float, optional
+        Maximum value for heatmap color normalization (default: data maximum).
+    dpi : int, optional
+        Output resolution (dots per inch) for the plot figure.
+    layer_assignment : dict, optional
+        Only for 'layer' mode. Dictionary mapping atom names (e.g., 'Mo1', 'S3') to 'top' or 'bottom' layer.
+    save_dir : str, optional
+        Directory to save the plot. Default "saved".
+    savefig : str, optional
+        Filename for saving the generated plot (in a 'saved' directory within your project).
+        If not set, the plot is only displayed and not saved.
 
 
 
@@ -947,7 +994,7 @@ savefig : str, optional
     #   - Bubble modes ('atomic', etc.) ignore highlight_channel and color by dominant channel at each point.
     #   - 'layer' mode uses the 'layer_assignment' dict instead.
 
-    labels, uniq_ik, E_grid, W_grids = read_fatband_files(directory,spin,sub_orb)
+    labels, uniq_ik, E_grid, W_grids = read_fatband_files(fatband_dir,spin,sub_orb)
     N_k, N_e = E_grid.shape
     if shift_fermi and fermi_level is not None:
         E_grid = E_grid - fermi_level
@@ -1435,9 +1482,512 @@ savefig : str, optional
 
         plt.tight_layout()
         if savefig:
-            SAVE_DIR = os.path.join(SCRIPT_DIR, "saved")
-            os.makedirs(SAVE_DIR, exist_ok=True)
-            out = os.path.join(SAVE_DIR, os.path.basename(savefig))
+            if not os.path.exists(save_dir):
+                os.makedirs(save_dir)
+            out = os.path.join(save_dir, os.path.basename(savefig))
+            plt.savefig(out, dpi=dpi or plt.rcParams['figure.dpi'])
+            print(f"Saved figure to {out}")
+
+        plt.show()
+
+
+    elif mode in heat_modes:
+        
+    # ... (skipping unchanged lines) ...
+    
+        # Total DOS panel
+        if plot_total_dos:
+            if shift_fermi and fermi_level is not None:
+                E_dos_plot = E_dos
+            else:
+                E_dos_plot = E_dos
+            ax2.plot(DOS, E_dos_plot, 'k-', lw=1)
+            ax2.set_xlabel('DOS')
+            if y_range:
+                ax2.set_ylim(y_range)
+            ax2.axvline(0, color='gray', ls='--', lw=0.8)
+            ax2.grid(True, ls='--', alpha=0.3)
+        plt.tight_layout()
+        if savefig:
+            if not os.path.exists(save_dir):
+                 os.makedirs(save_dir)
+            out = os.path.join(save_dir, os.path.basename(savefig))
+            plt.savefig(out, dpi=dpi or plt.rcParams['figure.dpi'])
+            print(f"Saved figure to {out}")
+
+        plt.show()
+
+
+    elems = [atom_name_fn(a) for (a, _) in labels]
+    orbs = [o for (_, o) in labels]
+    ch_labels = [f"{atom_name_fn(a)}-{o}" for (a, o) in labels]
+    bubble_modes = {'most','atomic','orbital','element_orbital'}
+    line_modes = {'normal','o_atomic','o_orbital','o_element_orbital'}
+    heat_modes = {'heat_total','heat_atomic','heat_orbital','heat_element_orbital'}
+
+
+    if mode in bubble_modes:
+        # Build grouped weights Wg
+        if mode == 'atomic':
+            unique_keys = sorted(set(elems))
+            Wg = np.zeros((len(unique_keys), N_k, N_e))
+            for i, key in enumerate(unique_keys):
+                for idx, a in enumerate(elems):
+                    if a == key:
+                        Wg[i] += W_grids[idx]
+        elif mode == 'orbital':
+            unique_keys = sorted(set(orbs))
+            Wg = np.zeros((len(unique_keys), N_k, N_e))
+            for i, key in enumerate(unique_keys):
+                for idx, o in enumerate(orbs):
+                    if o == key:
+                        Wg[i] += W_grids[idx]
+        elif mode == 'element_orbital':
+            unique_keys = sorted(set(ch_labels))
+            Wg = np.zeros((len(unique_keys), N_k, N_e))
+            for i, key in enumerate(unique_keys):
+                for idx, lab in enumerate(ch_labels):
+                    if lab == key:
+                        Wg[i] += W_grids[idx]
+        else:  # 'most'
+            unique_keys = sorted(set(ch_labels))
+            Wg = np.zeros((len(unique_keys), N_k, N_e))
+            for i, key in enumerate(unique_keys):
+                for idx, lab in enumerate(ch_labels):
+                    if lab == key:
+                        Wg[i] += W_grids[idx]
+        # Determine dominant channel and weight
+        idx_max = np.argmax(Wg, axis=0)  # shape (N_k, N_e)
+        val_max = np.max(Wg, axis=0)
+        # Flatten
+        X_flat = np.repeat(x_dist, N_e)
+        E_flat = E_grid.flatten()
+        idx_flat = idx_max.flatten()
+        val_flat = val_max.flatten()
+        # Threshold
+        global_max = np.nanmax(val_flat)
+        thr = weight_threshold * global_max
+        mask = val_flat > thr
+        X_plot = X_flat[mask]
+        E_plot = E_flat[mask]
+        idx_plot = idx_flat[mask]
+        val_plot = val_flat[mask]
+        # Colors/sizes
+        cmap = cm.get_cmap(cmap_name, len(unique_keys))
+        colors = [cmap(i) for i in idx_plot]
+        sizes = s_min + (s_max - s_min) * (val_plot / global_max if global_max>0 else 0)
+        # Setup figure
+        if plot_total_dos:
+            if dpi is not None:
+                fig, (ax1, ax2) = plt.subplots(1,2, gridspec_kw={'width_ratios':[3,1]}, figsize=(10,6), dpi=dpi, sharey=True)
+            else:
+                fig, (ax1, ax2) = plt.subplots(1,2, gridspec_kw={'width_ratios':[3,1]}, figsize=(10,6), sharey=True)
+        else:
+            if dpi is not None:
+                fig, ax1 = plt.subplots(1,1,figsize=(8,6), dpi=dpi)
+            else:
+                fig, ax1 = plt.subplots(1,1,figsize=(8,6))
+            ax2 = None
+        # Scatter
+        ax1.scatter(X_plot, E_plot, s=sizes, c=colors, edgecolor='k', lw=0.3, alpha=0.8, zorder=1)
+        # Overlay band lines (split segments)
+        for band in band_energies:
+            for (s,e) in seg_ranges:
+                if e > s:
+                    y = band[s:e+1]
+                    x = x_dist[s:e+1]
+                    if shift_fermi and fermi_level is not None:
+                        y = y - fermi_level
+                    ax1.plot(x, y, color='gray', lw=0.5, zorder=0)
+                else:
+                    x = x_dist[s:s+1]
+                    y = band[s:s+1]
+                    if shift_fermi and fermi_level is not None:
+                        y = y - fermi_level
+                    ax1.plot(x, y, 'o', color='gray', markersize=2, zorder=0)
+        ax1.set_xticks(tick_positions)
+        ax1.set_xticklabels(tick_labels)
+        ax1.set_xlabel('K-point Path')
+        ax1.set_ylabel('Energy (eV)')
+        if y_range:
+            ax1.set_ylim(y_range)
+        title_mode = mode.capitalize() if mode!='most' else 'Most'
+        ax1.set_title(f'Fatbands ({title_mode})')
+        # Legend
+        for i, key in enumerate(unique_keys):
+            ax1.scatter([], [], c=[cmap(i)], label=key, edgecolor='k', lw=0.3)
+        ax1.legend(fontsize='small', ncol=2, loc='best')
+        ax1.grid(True, ls='--', alpha=0.3)
+        # Total DOS panel
+        if plot_total_dos:
+            ax2.plot(DOS, E_dos, 'k-', lw=1)
+            ax2.set_xlabel('DOS')
+            if y_range:
+                ax2.set_ylim(y_range)
+            ax2.axvline(0, color='gray', ls='--', lw=0.8)
+            ax2.grid(True, ls='--', alpha=0.3)
+        plt.tight_layout()
+        if savefig:
+            if not os.path.exists(save_dir):
+                os.makedirs(save_dir)
+            out = os.path.join(save_dir, os.path.basename(savefig))
+            plt.savefig(out, dpi=dpi or plt.rcParams['figure.dpi'])
+            print(f"Saved figure to {out}")
+
+        plt.show()
+
+
+    elif mode in line_modes or mode == 'layer':
+
+        if mode == 'layer':
+
+            atom_name_fn = lambda x: x
+
+        else:
+
+            atom_name_fn = strip_number
+
+        elems = [a for (a, _) in labels]  # 'W1', 'S2', ...
+        orbs = [o for (_, o) in labels]
+        ch_labels = [f"{a}-{o}" for (a, o) in labels]
+
+        
+
+        if mode == 'layer':
+            # 1. Unique atom names from labels (now like 'W1', 'Mo2', 'S3' ...)
+            atom_names = sorted(set(a for (a, _) in labels))
+
+            # 2. Use provided assignment, raise if not provided or incomplete
+            if layer_assignment is None:
+                raise ValueError("You must provide layer_assignment as a dict when using mode='layer'.")
+
+            # 3. Validate all atoms are in assignment
+            for atom in atom_names:
+                if atom not in layer_assignment:
+                    raise ValueError(f"layer_assignment is missing entry for atom '{atom}'. "
+                                     f"Please supply all atoms: {atom_names}")
+
+            # 4. Sum weights by layer
+            W_top = np.zeros((N_k, N_e))
+            W_bottom = np.zeros((N_k, N_e))
+            for i, (a, o) in enumerate(labels):
+                if layer_assignment[a] == 'top':
+                    W_top += W_grids[i]
+                elif layer_assignment[a] == 'bottom':
+                    W_bottom += W_grids[i]
+                else:
+                    raise ValueError(
+                        f"layer_assignment for atom '{a}' must be 'top' or 'bottom', not '{layer_assignment[a]}'.")
+
+            W_sum = W_top + W_bottom
+            W_sum[W_sum <= 0] = np.nan
+            frac = W_top / W_sum  # 1 = all top, 0 = all bottom
+            colorbar_label = 'Fraction of Top Layer (0=Bottom, 1=Top)'
+
+        elif mode in line_modes:
+
+            if dual:
+
+                if isinstance(highlight_channel, str):
+
+                    groups = [g.strip() for g in highlight_channel.split(',')]
+
+                elif isinstance(highlight_channel, (list, tuple)):
+
+                    groups = list(highlight_channel)
+
+                else:
+
+                    raise ValueError(
+
+                        "For dual=True, highlight_channel must be 'g1,g2' or a two-element list/tuple"
+
+                    )
+
+                if len(groups) != 2:
+                    raise ValueError(f"dual mode needs exactly two groups, got {groups!r}")
+
+                key1, key2 = groups
+
+                if mode == 'o_atomic':
+
+                    valid = sorted(set([a for (a, _) in labels]))
+
+
+
+                elif mode == 'o_orbital':
+
+                    valid = sorted(set(orbs))
+
+                else:
+
+                    valid = sorted(set(ch_labels))
+
+                if key1 not in valid or key2 not in valid:
+                    raise ValueError(f"dual keys {groups!r} must be among {valid}")
+
+                W1 = np.zeros((N_k, N_e))
+
+                W2 = np.zeros((N_k, N_e))
+
+                if mode == 'o_atomic':
+                    for i, (a, _) in enumerate(labels):
+                        if a == key1:
+                            W1 += W_grids[i]
+                        elif a == key2:
+                            W2 += W_grids[i]
+
+                elif mode == 'o_orbital':
+
+                    for i, o in enumerate(orbs):
+
+                        if o == key1:
+                            W1 += W_grids[i]
+
+                        elif o == key2:
+                            W2 += W_grids[i]
+
+                else:
+
+                    for i, lab in enumerate(ch_labels):
+
+                        if lab == key1:
+                            W1 += W_grids[i]
+
+                        elif lab == key2:
+                            W2 += W_grids[i]
+
+                W12 = W1 + W2
+
+                W12_safe = W12.copy()
+
+                W12_safe[W12_safe <= 0] = np.nan
+
+                frac = W2 / W12_safe
+
+                colorbar_label = f'Fraction of {key2}   (0={key1}, 1={key2})'
+
+            else:
+
+                if mode == 'o_atomic':
+
+                    if highlight_channel is None:
+                        raise ValueError("highlight_channel must be provided for o_atomic mode")
+
+                    unique_atoms = sorted(set(elems))
+
+                    if highlight_channel not in unique_atoms:
+                        raise ValueError(f"highlight_channel '{highlight_channel}' not in atomic keys {unique_atoms}")
+
+                    Wtot = np.zeros((N_k, N_e));
+                    Whigh = np.zeros((N_k, N_e))
+
+                    for idx, a in enumerate(elems):
+
+                        Wtot += W_grids[idx]
+
+                        if a == highlight_channel:
+                            Whigh += W_grids[idx]
+
+                elif mode == 'o_orbital':
+
+                    if highlight_channel is None:
+                        raise ValueError("highlight_channel must be provided for o_orbital mode")
+
+                    unique_orbs = sorted(set(orbs))
+
+                    if highlight_channel not in unique_orbs:
+                        raise ValueError(f"highlight_channel '{highlight_channel}' not in orbital keys {unique_orbs}")
+
+                    Wtot = np.zeros((N_k, N_e));
+                    Whigh = np.zeros((N_k, N_e))
+
+                    for idx, o in enumerate(orbs):
+
+                        Wtot += W_grids[idx]
+
+                        if o == highlight_channel:
+                            Whigh += W_grids[idx]
+
+                elif mode == 'o_element_orbital':
+
+                    if highlight_channel is None:
+                        raise ValueError("highlight_channel must be provided for o_element_orbital mode")
+
+                    unique_eo = sorted(set(ch_labels))
+
+                    if highlight_channel not in unique_eo:
+                        raise ValueError(
+                            f"highlight_channel '{highlight_channel}' not in element-orbital keys {unique_eo}")
+
+                    Wtot = np.zeros((N_k, N_e));
+                    Whigh = np.zeros((N_k, N_e))
+
+                    for idx, lab in enumerate(ch_labels):
+
+                        Wtot += W_grids[idx]
+
+                        if lab == highlight_channel:
+                            Whigh += W_grids[idx]
+
+                else:  # normal
+
+                    Wtot = np.ones((N_k, N_e))
+
+                    Whigh = np.zeros((N_k, N_e))
+
+                Wtot_safe = Wtot.copy()
+
+                Wtot_safe[Wtot_safe <= 0] = np.nan
+
+                frac = Whigh / Wtot_safe
+
+                colorbar_label = f'Fraction of {highlight_channel}'
+
+        # ------ PLOTTING PART (shared for all line/layer modes) ------
+
+        cmap = plt.get_cmap(cmap_name)
+
+        norm = plt.Normalize(0.0, 1.0)
+
+        nbands = band_energies.shape[0]
+
+        if plot_total_dos:
+
+            if dpi is not None:
+
+                fig, (ax1, ax2) = plt.subplots(1, 2, gridspec_kw={'width_ratios': [3, 1]},
+
+                                               figsize=(10, 6), dpi=dpi, sharey=True)
+
+            else:
+
+                fig, (ax1, ax2) = plt.subplots(1, 2, gridspec_kw={'width_ratios': [3, 1]},
+
+                                               figsize=(10, 6), sharey=True)
+
+        else:
+
+            if dpi is not None:
+
+                fig, ax1 = plt.subplots(1, 1, figsize=(8, 6), dpi=dpi)
+
+            else:
+
+                fig, ax1 = plt.subplots(1, 1, figsize=(8, 6))
+
+            ax2 = None
+
+        for b in range(nbands):
+
+            y_line = band_energies[b].copy()
+
+            if shift_fermi and fermi_level is not None:
+                y_line = y_line - fermi_level
+
+            x_line = x_dist
+
+            for (s, e) in seg_ranges:
+
+                if e <= s:
+                    continue
+
+                xs = x_line[s:e + 1];
+                ys = y_line[s:e + 1]
+
+                points = np.array([xs, ys]).T.reshape(-1, 1, 2)
+
+                segments = np.concatenate([points[:-1], points[1:]], axis=1)
+
+                frac_vals = []
+
+                for i_k in range(s, e + 1):
+
+                    Eb = band_energies[b, i_k]
+
+                    Eb0 = Eb - fermi_level if (shift_fermi and fermi_level is not None) else Eb
+
+                    row = E_grid[i_k, :]
+
+                    j = np.argmin(np.abs(row - Eb0))
+
+                    fv = frac[i_k, j]
+
+                    if np.isnan(fv): fv = 0.0
+
+                    frac_vals.append(fv)
+
+                frac_seg = 0.5 * (np.array(frac_vals[:-1]) + np.array(frac_vals[1:]))
+
+                lc = mcoll.LineCollection(segments, array=frac_seg, cmap=cmap,
+
+                                          norm=norm, linewidth=2, zorder=1)
+
+                ax1.add_collection(lc)
+
+        ax1.set_xticks(tick_positions)
+
+        ax1.set_xticklabels(tick_labels)
+
+        ax1.set_xlabel('K-point Path')
+        
+        ylabel = 'E - E_F (eV)' if (shift_fermi and fermi_level is not None) else 'Energy (eV)'
+        ax1.set_ylabel(ylabel)
+
+        if y_range:
+            ax1.set_ylim(y_range)
+
+        if mode == 'layer':
+
+            ax1.set_title('Fatbands (Layer)')
+
+        else:
+
+            title_mode = mode if mode != 'normal' else f"Highlight {highlight_channel}"
+
+            ax1.set_title(f'Fatbands ({title_mode})')
+
+        sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+
+        sm.set_array([])
+
+        cbar = plt.colorbar(sm, ax=ax1, pad=0.02)
+
+        cbar.set_label(colorbar_label)
+
+        if overlay_bands_in_heat:
+
+            for band in band_energies:
+
+                for (s, e) in seg_ranges:
+
+                    if e > s:
+
+                        y = band[s:e + 1];
+                        x = x_dist[s:e + 1]
+
+                        if shift_fermi and fermi_level is not None:
+                            y = y - fermi_level
+
+                        ax1.plot(x, y, color='lightgray', lw=0.5, zorder=0)
+
+                    else:
+
+                        x = x_dist[s];
+                        y = band[s]
+
+                        if shift_fermi and fermi_level is not None:
+                            y = y - fermi_level
+
+                        ax1.plot(x, y, color='lightgray', lw=0.5, zorder=0)
+
+        ax1.grid(True, ls='--', alpha=0.3)
+
+        plt.tight_layout()
+        if savefig:
+            if not os.path.exists(save_dir):
+                os.makedirs(save_dir)
+            out = os.path.join(save_dir, os.path.basename(savefig))
             plt.savefig(out, dpi=dpi or plt.rcParams['figure.dpi'])
             print(f"Saved figure to {out}")
 
@@ -1536,7 +2086,9 @@ savefig : str, optional
         ax1.set_xticks(tick_positions)
         ax1.set_xticklabels(tick_labels)
         ax1.set_xlabel('K-point Path')
-        ax1.set_ylabel('Energy (eV)')
+        
+        ylabel = 'E - E_F (eV)' if (shift_fermi and fermi_level is not None) else 'Energy (eV)'
+        ax1.set_ylabel(ylabel)
         if y_range:
             ax1.set_ylim(y_range)
         # Title and colorbar
@@ -1561,9 +2113,9 @@ savefig : str, optional
             ax2.grid(True, ls='--', alpha=0.3)
         plt.tight_layout()
         if savefig:
-            SAVE_DIR = os.path.join(SCRIPT_DIR, "saved")
-            os.makedirs(SAVE_DIR, exist_ok=True)
-            out = os.path.join(SAVE_DIR, os.path.basename(savefig))
+            if not os.path.exists(save_dir):
+                os.makedirs(save_dir)
+            out = os.path.join(save_dir, os.path.basename(savefig))
             plt.savefig(out, dpi=dpi or plt.rcParams['figure.dpi'])
             print(f"Saved figure to {out}")
 
@@ -1607,6 +2159,7 @@ def plot_from_file(
     heat_vmax=None,
     dpi=None,
     layer_assignment=None,
+        save_dir="saved",
         savefig=None,
         spin=False,
         sub_orb=False
@@ -1669,6 +2222,8 @@ def plot_from_file(
             Output resolution for the plot.
         layer_assignment : dict, optional
             For 'layer' fatband mode, maps atoms to 'top'/'bottom' layers.
+        save_dir : str, optional
+            Directory where the plot should be saved. Default is "saved".
         savefig : str, optional
             Filename for saving the plot (inside the 'saved' folder). If None, plot is only displayed.
 
@@ -1716,12 +2271,13 @@ def plot_from_file(
             band_mode=band_mode,
             fatband_dir=fatband_dir,
             cmap_name=cmap_name,
-        savefig=savefig,
+            save_dir=save_dir,
+            savefig=savefig,
             spin=spin,sub_orb=sub_orb
         )
     elif pt == 'dos':
         plot_dos(dos_file, fermi_level, shift_fermi, y_range, dpi=dpi,
-        savefig=savefig)
+        save_dir=save_dir, savefig=savefig)
     elif plot_type == 'overlay_band':
         overlay_band_plot(
             band_file, kpath_file,
@@ -1733,18 +2289,20 @@ def plot_from_file(
             color1=color1,
             color2=color2,
             label1=label1,
-            label2=label2
+            label2=label2,
+            save_dir=save_dir,
+            savefig=savefig
         )
 
     elif pt == 'pdos':
         plot_pdos_dir(pdos_dir, fermi_level, shift_fermi, y_range, dpi=dpi,pdos_mode=pdos_mode,
-        savefig=savefig)
+        save_dir=save_dir, savefig=savefig)
     elif pt == 'fatbands':
         fb_dir = fatband_dir if fatband_dir is not None else pdos_dir
         if fb_dir is None or band_file is None or kpath_file is None:
             raise ValueError("fatband_dir (or file_path), band_file, and kpath_file are all required for 'fatbands'")
         plot_fatbands(
-            directory=fb_dir,
+            fatband_dir=fb_dir,
             kpath_file=kpath_file,
             band_file=band_file,
             mode=fatbands_mode,
@@ -1764,7 +2322,8 @@ def plot_from_file(
             heat_vmax=heat_vmax,
             dpi=dpi,
             layer_assignment=layer_assignment,
-        savefig=savefig ,
+            save_dir=save_dir,
+            savefig=savefig,
             spin=spin,
             sub_orb=sub_orb# <--- PASSED DOWN
         )
@@ -1814,6 +2373,21 @@ def parse_kpoints_crystal_b(kpt_file):
 
 
 def parse_bandgnu_blocks(band_file):
+    """
+    Parses a QE 'bands.dat.gnu' file into K-distance and Energy arrays.
+
+    Parameters
+    ----------
+    band_file : str
+        Path to the .gnu band file.
+
+    Returns
+    -------
+    kdist : np.ndarray
+        Array of shape (Nk,) containing k-point distances.
+    E : np.ndarray
+        Array of shape (Nk, Nb) containing band energies.
+    """
     lines = Path(band_file).read_text().splitlines()
     blocks, curr = [], []
     for ln in lines:
@@ -1848,20 +2422,37 @@ def segment_for_index(idx, edges, labels):
     return "?"
 
 
-def detect_band_gap(band_file, kpt_file, fermi=None):
+def detect_band_gap(band_file, kpt_file, fermi_level=None):
+    """
+    Analyzes the band structure to detect VBM, CBM, and Band Gap.
+
+    Parameters
+    ----------
+    band_file : str
+        Path to the .gnu band file.
+    kpt_file : str
+        Path to the K-path file used to generate bands.
+    fermi_level : float, optional
+        Fermi energy in eV. If None, it estimates it as mid-gap.
+
+    Returns
+    -------
+    None
+        Prints the VBM, CBM, gap size, and direct/indirect nature to stdout.
+    """
     kdist, E = parse_bandgnu_blocks(band_file)
     weights, labels, edges = parse_kpoints_crystal_b(kpt_file)
 
-    if fermi is None:
+    if fermi_level is None:
         vbm = np.max(E)
         cbm_candidates = E[E > vbm + 1e-6]
         if cbm_candidates.size == 0:
             return "ERROR: No CBM found above VBM."
         cbm = np.min(cbm_candidates)
         gap = cbm - vbm
-        fermi = 0.5 * (vbm + cbm)
+        fermi_level = 0.5 * (vbm + cbm)
     else:
-        E_rel = E - fermi
+        E_rel = E - fermi_level
         vbm = np.max(E[E_rel <= 1e-7])
         cbm = np.min(E[E_rel > 0])
         gap = cbm - vbm
@@ -1876,7 +2467,7 @@ def detect_band_gap(band_file, kpt_file, fermi=None):
     seg_v = segment_for_index(kv, edges, labels)
     seg_c = segment_for_index(kc, edges, labels)
 
-    result = f"{Path(band_file).stem}: Gap={gap:.3f} eV at Fermi={fermi:.3f} eV ({'direct' if is_direct else 'indirect'})\n"
+    result = f"{Path(band_file).stem}: Gap={gap:.3f} eV at Fermi={fermi_level:.3f} eV ({'direct' if is_direct else 'indirect'})\n"
     result += f"  VBM: E={vbm:.3f} eV (kpt {kv}, band {bv}, {seg_v})\n"
     result += f"  CBM: E={cbm:.3f} eV (kpt {kc}, band {bc}, {seg_c})\n"
     if not is_direct:
@@ -2136,6 +2727,20 @@ def classify_stacking(cell: np.ndarray, species: List[str], frac: np.ndarray) ->
 
 
 def analyse_file(path: Union[str, Path]):
+    """
+    Analyzes a Quantum ESPRESSO input/output file structure.
+    Determines lattice parameters, stacking sequence (for 2D), and interlayer distances.
+
+    Parameters
+    ----------
+    path : str or Path
+        Path to the QE input (.in) or output (.out) file.
+
+    Returns
+    -------
+    None
+        Prints structure statistics to stdout.
+    """
     text = Path(path).read_text()
     blocks = gather_blocks(text)
     for tag, blk in blocks:
@@ -2187,7 +2792,7 @@ _STATE_RX = re.compile(
     r"\s*,\s*wfc\s*(\d+)\s*\(l=(\d+)\s+j=([0-9.]+)\s+m_j=\s*([-\d.]+)\)"
 )
 
-IdxInfo   = Dict[str, int | float | str]
+IdxInfo   = Dict[str, Union[int, float, str]]
 GroupKey  = Tuple[int, str, int, int, float]       # (atom, elem, wfc, l, j)
 
 
@@ -2306,14 +2911,29 @@ def _make_filename(outdir: pathlib.Path, key: Tuple) -> pathlib.Path:
 # ---------------------------------------------------------------------------
 # 4.  Public API
 # ---------------------------------------------------------------------------
-def convert_consistent(proj_out: str | pathlib.Path,
-                       outdir: str | pathlib.Path = "BMS_pdos",
+def convert_consistent(proj_out: Union[str, pathlib.Path],
+                       outdir: Union[str, pathlib.Path] = "BMS_pdos",
                        *,
                        overwrite: bool = True,
                        verbose: bool = True) -> None:
     """
-    Write one **fatbands** file per projector group with *identical* rows
-    per k‑point/band, avoiding “varying rows per k” warnings.
+    Standardizes 'projwfc' output files for plotting.
+    
+    This function reads a raw QE projwfc output file and generates separate 
+    fatband files for each orbital group, ensuring consistent row counts per k-point.
+    It resolves issues where 'projwfc.x' outputs a varying number of lines 
+    depending on the projection weight.
+
+    Parameters
+    ----------
+    proj_out : str or Path
+        Path to the 'proj.out' or 'pdos.out' file generated by projwfc.x.
+    outdir : str or Path, optional
+        Target directory to save the cleaned .pdos files. Default is "BMS_pdos".
+    overwrite : bool
+        If True, overwrites existing files in `outdir`.
+    verbose : bool
+        If True, prints progress to stdout.
     """
     proj_out = pathlib.Path(proj_out)
     outdir   = pathlib.Path(outdir)
@@ -2432,14 +3052,15 @@ from typing import Dict, List, Tuple, IO, Generator
 # -----------------------------------------------------------------------------
 # 0.  Clebsch–Gordan helper using *sympy*
 # -----------------------------------------------------------------------------
-from sympy.physics.wigner import clebsch_gordan as _CG
-from sympy               import Rational as _R
-
 # simple memoisation because the same (l,j,mj,ml) pairs repeat a lot
 _CG_CACHE: Dict[Tuple[int, float, float, int], float] = {}
 
 def _cg_prob(l: int, j: float, mj: float, ml: int) -> float:
     """Return  ∑_{m_s=±½} |⟨l ml;½ m_s | l j m_j⟩|²  (Clebsch–Gordan)."""
+    # Lazy import to avoid hard dependency on sympy
+    from sympy.physics.wigner import clebsch_gordan as _CG
+    from sympy import Rational as _R
+
     prob = 0.0
     for m_s in (-0.5, +0.5):
         if abs(ml - (mj - m_s)) < 1e-8:            # selection rule
@@ -2466,7 +3087,7 @@ _RX_COL = re.compile(
     r"wfc\s*(\d+)\s*\(l=(\d+)\s*m=\s*(\d+)\)"
 )
 
-IdxInfo   = Dict[str, int | float | str]
+IdxInfo   = Dict[str, Union[int, float, str]]
 GroupName = Tuple[int, str, int, int]   # atom, elem, wfc, l
 
 def _parse_state_table(text: str) -> Tuple[Dict[int, IdxInfo], bool]:
@@ -2528,13 +3149,31 @@ def _orb(l: int) -> str:               # helper for filenames
     return _LSYM.get(l, f"l{l}")
 
 def convert_soc_proj_to_ml(
-    proj_out: str | pathlib.Path,
-    outdir: str | pathlib.Path = "MLM_pdos",
+    proj_out: Union[str, pathlib.Path],
+    outdir: Union[str, pathlib.Path] = "MLM_pdos",
     *,
     overwrite: bool = True,
     quiet: bool = False,
 ) -> None:
-    """Convert SOC *projwfc* output to (l, m_l) resolved fatbands/PDOS files."""
+    """
+    Converts SOC (Spin-Orbit Coupling) 'projwfc' output to m-resolved PDOS files.
+
+    In SOC calculations, projections are often given in (l, j, mj) basis. This function
+    converts them to the standard (l, ml) basis using Clebsch-Gordan coefficients,
+    summing up contributions to create standard s/p/d/f resolved files compatible 
+    with standard plotting tools.
+
+    Parameters
+    ----------
+    proj_out : str or Path
+        Path to the SOC 'proj.out' file.
+    outdir : str or Path, optional
+        Target directory to save the converted files. Default is "MLM_pdos".
+    overwrite : bool
+        If True, overwrites existing files.
+    quiet : bool
+        If True, suppresses progress output.
+    """
     proj_out = pathlib.Path(proj_out)
     outdir   = pathlib.Path(outdir)
 
@@ -2606,3 +3245,26 @@ def convert_soc_proj_to_ml(
         fh.close()
     if not quiet:
         print(f"\n[soc2ml]  Wrote {len(fhs)} files → {outdir}")
+
+def launch_gui():
+    """
+    Launches the QUI-Web Streamlit application.
+    Assumes `qui_app.py` is in the same directory as this module.
+    """
+    import subprocess
+    
+    # Get directory of this file
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    app_path = os.path.join(base_dir, "qui_app.py")
+    
+    if not os.path.exists(app_path):
+        print(f"Error: Could not find `qui_app.py` at {app_path}")
+        return
+
+    print(f"Launching QUI-Web from {app_path}...")
+    try:
+        # Run streamlit command
+        subprocess.run(["streamlit", "run", app_path], check=True)
+    except Exception as e:
+        print(f"Failed to launch GUI: {e}")
+        print("Try running manually: streamlit run qui_app.py")
