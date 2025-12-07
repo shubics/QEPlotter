@@ -3,3 +3,4 @@ matplotlib
 seaborn
 scipy
 pandas
+streamlit
