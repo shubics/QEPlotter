@@ -11,11 +11,48 @@ import numpy as np
 
 # --- 1. APP CONFIGURATION ---
 st.set_page_config(
-    page_title="QEPlotter Pro",
+    page_title="QEPlotter",
     page_icon="⚛️",
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# --- CUSTOM CSS ---
+st.markdown("""
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
+    
+    html, body, [class*="css"]  {
+        font-family: 'Inter', sans-serif;
+    }
+    
+    /* Sleek Header Gradient */
+    h1 {
+        background: -webkit-linear-gradient(45deg, #3B82F6, #8B5CF6);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        font-weight: 700 !important;
+    }
+    
+    /* Modern Containers */
+    .stApp {
+        background-color: #0F172A;
+    }
+    
+    /* Button Styling */
+    .stButton>button {
+        border-radius: 8px;
+        font-weight: 600;
+        border: none;
+        transition: all 0.2s ease;
+    }
+    
+    .stButton>button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # Force non-interactive backend (Critical for macOS)
 matplotlib.use("Agg")
