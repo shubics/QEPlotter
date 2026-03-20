@@ -39,10 +39,27 @@ streamlit run qui_app.py
 - **Auto-Fermi**: Automatic detection of Fermi energy from `scf.out`.
 - **Smart Analysis**: Built-in band gap detector and bilayer structure analyzer.
 
-### � **Python Library (`qep.py`)**
+### 📦 **Python API (Two Ways to Use)**
 
-If you prefer scripting, copy `qep.py` to your project and use it directly:
+You have two options for using the Python API. **Both produce the exact same results with identical parameters.**
 
+#### **Option 1: The New Modular Package (Recommended)**
+With version 1.0.0, the core is available as a clean, structured package (`qeplotter/`).
+```python
+from qeplotter import plot_from_file
+
+plot_from_file(
+    plot_type='fatbands',
+    band_file='bands.dat.gnu',
+    kpath_file='KPOINTS',
+    fatband_dir='pdos_files/',
+    fatbands_mode='atomic',
+    spin=True
+)
+```
+
+#### **Option 2: The Standalone Script (`qep.py`)**
+If you prefer a portable, single-file script approach, simply copy `qep.py` to your project directory.
 ```python
 import qep
 
@@ -55,6 +72,8 @@ qep.plot_from_file(
     spin=True
 )
 ```
+
+> **Note:** All remaining code snippets in this document use `import qep`. To use the modular package instead, simply replace `qep.plot_from_file(...)` with `from qeplotter import plot_from_file`!
 
 ---
 
