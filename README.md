@@ -276,6 +276,10 @@ plot_from_file(
 )
 ```
 
+<p align="center">
+  <img src="examples/example_outputs/BSO_Monolayer_spin_band.png" width="600" alt="Spin-polarized band structure">
+</p>
+
 ### 2. Band Structure with Band Gap Annotation
 
 ```python
@@ -311,6 +315,10 @@ plot_from_file(
 )
 ```
 
+<p align="center">
+  <img src="examples/example_outputs/fatbands_atomic.jpeg" width="600" alt="Fatbands atomic bubble plot">
+</p>
+
 ### 4. Fatbands: Orbital Heatmap
 
 ```python
@@ -331,6 +339,10 @@ plot_from_file(
 )
 ```
 
+<p align="center">
+  <img src="examples/example_outputs/fatbands_heat_atomic.jpeg" width="600" alt="Fatbands heatmap">
+</p>
+
 ### 5. Element-Orbital Decomposition
 
 ```python
@@ -347,6 +359,10 @@ plot_from_file(
     spin=False
 )
 ```
+
+<p align="center">
+  <img src="examples/example_outputs/fatbands_element_orbital.jpeg" width="600" alt="Element-orbital fatbands">
+</p>
 
 ### 6. Overlay Band Comparison
 
@@ -365,6 +381,10 @@ plot_from_file(
     shift_fermi=True
 )
 ```
+
+<p align="center">
+  <img src="examples/example_outputs/BandStructure_MoS2_Monolayer_Spin_vs_MoS2_Monolayer_Non_Spin.png" width="600" alt="Overlay band comparison">
+</p>
 
 ### 7. Layer-Resolved Fatbands
 
@@ -386,6 +406,10 @@ plot_from_file(
     fermi_level=3.5
 )
 ```
+
+<p align="center">
+  <img src="examples/example_outputs/fatbands_layer.jpeg" width="600" alt="Layer-resolved fatbands">
+</p>
 
 ### 8. Total DOS
 
