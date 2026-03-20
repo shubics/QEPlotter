@@ -1589,36 +1589,6 @@ def plot_fatbands(
         return
 
 
-    elif mode in heat_modes:
-        
-    # ... (skipping unchanged lines) ...
-    
-        # Total DOS panel
-        if plot_total_dos:
-            if shift_fermi and fermi_level is not None:
-                E_dos_plot = E_dos
-            else:
-                E_dos_plot = E_dos
-            ax2.plot(DOS, E_dos_plot, 'k-', lw=1)
-            ax2.set_xlabel('DOS')
-            if y_range:
-                ax2.set_ylim(y_range)
-            if x_range:
-                ax2.set_xlim(x_range)
-            ax2.axvline(0, color='gray', ls='--', lw=0.8)
-            ax2.grid(True, ls='--', alpha=0.3)
-        plt.tight_layout()
-        if savefig:
-            if not os.path.exists(save_dir):
-                 os.makedirs(save_dir)
-            out = os.path.join(save_dir, os.path.basename(savefig))
-            plt.savefig(out, dpi=dpi or plt.rcParams['figure.dpi'])
-            print(f"Saved figure to {out}")
-
-        plt.show()
-        return
-
-
     elems = [atom_name_fn(a) for (a, _) in labels]
     orbs = [o for (_, o) in labels]
     ch_labels = [f"{atom_name_fn(a)}-{o}" for (a, o) in labels]
