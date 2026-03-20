@@ -259,7 +259,7 @@ The `plot_from_file` function is the main entry point. Below is the **exhaustive
 
 ## 🖼️ Plot Examples
 
-### 1. Basic Band Structure (Spin-Polarized)
+### 1. Basic Band Structure
 
 ```python
 from qeplotter import plot_from_file
@@ -296,6 +296,9 @@ plot_from_file(
     scf_file='scf.out'                   # Use SCF data for accurate gap
 )
 ```
+<p align="center">
+  <img src="examples/example_outputs/plot-4.png" width="600" alt="Fatbands atomic bubble plot">
+</p>
 
 ### 3. Fatbands: Atomic Contribution (Bubble Plot)
 
@@ -319,7 +322,7 @@ plot_from_file(
   <img src="examples/example_outputs/fatbands_atomic.jpeg" width="600" alt="Fatbands atomic bubble plot">
 </p>
 
-### 4. Fatbands: Orbital Heatmap
+### 4. Fatbands: Element Heatmap
 
 ```python
 from qeplotter import plot_from_file
@@ -360,9 +363,7 @@ plot_from_file(
 )
 ```
 
-<p align="center">
-  <img src="examples/example_outputs/fatbands_element_orbital.jpeg" width="600" alt="Element-orbital fatbands">
-</p>
+
 
 ### 6. Overlay Band Comparison
 
