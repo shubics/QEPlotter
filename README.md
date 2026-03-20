@@ -26,25 +26,28 @@ pip install -r requirements.txt
 The easiest way to use QEPlotter is via the interactive web dashboard:
 
 ```bash
-streamlit run qui_app.py
+streamlit run gui_mod.py
 ```
+
+> **Note:** `gui_app.py` is also available for legacy monolithic `qep.py` compatibility, but `gui_mod.py` powered by the `qeplotter` package is the recommended interface.
 
 ---
 
-## � Features at a Glance
+## ✨ Features at a Glance
 
-### 🖥️ **QUI-Web Dashboard**
+### 🖥️ **Web Dashboard (`gui_mod.py`)**
 - **Instant Visualization**: Drag & drop standard QE output files (`bands.dat.gnu`, `scf.out`, `pdos`).
-- **High-Res Static Plots**: Generates publication-quality images using Matplotlib.
-- **Auto-Fermi**: Automatic detection of Fermi energy from `scf.out`.
-- **Smart Analysis**: Built-in band gap detector and bilayer structure analyzer.
+- **High-Res Static Plots**: Publication-quality images via Matplotlib.
+- **Auto-Fermi Detection**: Automatically reads Fermi energy from `scf.out` (supports metals, insulators, and semiconductors).
+- **Band Gap Annotation**: Detects VBM/CBM and draws an arrow with the gap value directly on the plot.
+- **Smart Analysis Tools**: Built-in band gap detector, bilayer structure analyzer, and projection converters.
 
 ### 📦 **Python API (Two Ways to Use)**
 
 You have two options for using the Python API. **Both produce the exact same results with identical parameters.**
 
-#### **Option 1: The New Modular Package (Recommended)**
-With version 1.0.0, the core is available as a clean, structured package (`qeplotter/`).
+#### **Option 1: Modular Package ✅ (Recommended)**
+The core is available as a clean, structured package (`qeplotter/`).
 ```python
 from qeplotter import plot_from_file
 
@@ -58,8 +61,8 @@ plot_from_file(
 )
 ```
 
-#### **Option 2: The Standalone Script (`qep.py`)**
-If you prefer a portable, single-file script approach, simply copy `qep.py` to your project directory.
+#### **Option 2: Standalone Script (`qep.py`)**
+If you prefer a portable, single-file approach, simply copy `qep.py` to your project directory.
 ```python
 import qep
 
@@ -73,21 +76,39 @@ qep.plot_from_file(
 )
 ```
 
-> **Note:** All remaining code snippets in this document use `import qep`. To use the modular package instead, simply replace `qep.plot_from_file(...)` with `from qeplotter import plot_from_file`!
+> **Note:** All code examples below use `from qeplotter import plot_from_file`.  
+> For the standalone script, simply replace with `import qep` and call `qep.plot_from_file(...)`.
 
 ---
 
 ## 📁 Project Structure
 
-The project uses a simple flat structure for easy usage:
-
 ```
 QEPlotter/
-├── qui_app.py         # Main Streamlit GUI Application
-├── qep.py             # Core plotting & analysis library
-├── requirements.txt   # Python dependencies
-├── README.md          # Documentation
-└── example_data/      # (Optional) Sample QE outputs
+├── gui_mod.py              # 🖥  Main Streamlit GUI (uses modular package)
+├── gui_app.py              # 🖥  Legacy GUI (uses monolithic qep.py)
+│
+├── qeplotter/              # 📦 Core modular Python package
+│   ├── __init__.py         #     Package exports
+│   ├── api.py              #     plot_from_file() dispatcher
+│   ├── core/
+│   │   ├── io.py           #     Parsers: K-path, band files, fatband files
+│   │   └── utils.py        #     Helpers (strip_number, etc.)
+│   ├── plotting/
+│   │   ├── bands.py        #     Band structure + colored band modes
+│   │   ├── dos.py          #     Total DOS + PDOS
+│   │   └── fatbands.py     #     Bubble, Line, Heatmap, Layer fatbands
+│   ├── analysis/
+│   │   ├── bandgap.py      #     Band gap detection + plot annotation
+│   │   └── bilayer.py      #     Structure analysis (stacking, interlayer distance)
+│   └── converters/
+│       ├── fatbands.py     #     proj.out → pdos converter (consistent grid)
+│       └── soc.py          #     SOC (j,mj) → (l,ml) basis converter
+│
+├── qep.py                  # 📄 Standalone monolithic script (all-in-one)
+├── requirements.txt        # Python dependencies
+├── setup.py                # pip install support
+└── examples/               # Sample QE outputs for testing
 ```
 
 ---
@@ -97,8 +118,9 @@ QEPlotter/
 ### 1. Band Structure Visualization
 The library reads standard Quantum ESPRESSO `bands.x` output (`.gnu` format).
 
-*   **Spin-Polarized Support**: Automatically detects spin channels. If `spin=True`, it plots Spin Up (red/blue) and Spin Down (blue/red) dashed lines.
-*   **Overlay Plotting**: The `overlay_band` mode allows you to superimpose two distinct band structures (e.g., *Bulk vs. Monolayer* or *PBE vs. HSE*). It handles disparate Fermi levels by aligning them to 0 eV automatically if `shift_fermi=True`.
+*   **Spin-Polarized Support**: When `spin=True`, fatband projection files with SOC/spin structure are parsed correctly. The `spin` flag is passed to the file reader for proper filename matching.
+*   **Overlay Plotting**: The `overlay_band` mode superimposes two distinct band structures (e.g., *Bulk vs. Monolayer* or *PBE vs. HSE*). Handles disparate Fermi levels by aligning to 0 eV when `shift_fermi=True`.
+*   **Band Gap Annotation**: When `show_band_gap=True`, automatically detects VBM/CBM and draws an arrow with the gap value. Supports SCF-based detection via `scf_file` for higher accuracy.
 
 ### 2. Fatbands (Projected Band Structure)
 This is the library's most advanced feature, visualizing the contribution of specific atomic orbitals to the electronic bands. It parses filenames like `atm#1(Mo)_wfc#2(d)` to map weights to bands.
@@ -121,32 +143,36 @@ Useful for **Van der Waals heterostructures**.
 *   **Input**: A dictionary mapping Atom Labels to Layer Names.
     *   *Example*: `{'Mo1': 'L1', 'S2': 'L1', 'W3': 'L2'}`
 *   **Process**: The code aggregates weights for all atoms in "L1" vs "L2" and plots them with distinct colors (e.g., Blue for L1, Red for L2).
+*   **Auto-Detection**: The GUI can automatically assign layers from a structure file using PBC-aware median splitting.
 
 ### 3. Density of States (DOS)
-*   **Total DOS**: reads standard `dos.x` output. Supports automatic rotation of the plot (Energy on Y-axis) for side-by-side comparison with bands.
-*   **PDOS (Projected)**: Sums specific columns from `projwfc.x` output files. It validates that the energy grid matches the Total DOS file (if provided) to ensure alignment.
+*   **Total DOS**: Reads standard `dos.x` output. Supports vertical orientation (Energy on Y-axis) for side-by-side comparison with bands.
+*   **PDOS (Projected)**: Sums specific columns from `projwfc.x` output files grouped by `atomic`, `orbital`, or `element_orbital` mode.
+*   **Side-by-Side DOS**: Band/fatband plots can include a Total DOS panel with `plot_total_dos=True`.
 
 ### 4. Advanced Analysis Tools
 
-#### 🔍 Band Gap Detector (`detect_band_gap`)
-Calculates the electronic band gap by scanning the eigenenergies:
-1.  **VBM Identification**: Finds the highest occupied state (energy $\le E_F$).
-2.  **CBM Identification**: Finds the lowest unoccupied state (energy $> E_F$).
-3.  **Nature Detection**: Compares the k-point indices of VBM and CBM.
-    *   If $k_{VBM} == k_{CBM} \rightarrow$ **Direct Gap**.
-    *   If $k_{VBM} \ne k_{CBM} \rightarrow$ **Indirect Gap**.
+#### 🔍 Band Gap Detector
+Two detection methods with automatic fallback:
+
+1.  **SCF-Based** (`scf_file`): Parses `scf.out` to extract HOMO/LUMO levels directly. Most accurate for insulators and semiconductors.
+2.  **Fermi-Level Based** (fallback): Scans band energies relative to $E_F$ to find VBM/CBM.
+
+Detection output:
+*   **VBM/CBM positions** (energy, k-point index)
+*   **Gap type**: Direct ($k_{VBM} = k_{CBM}$) or Indirect ($k_{VBM} \ne k_{CBM}$)
+*   **Plot annotation**: Arrow from VBM→CBM with $E_g$ label
 
 #### 🧱 Structure Analyzer (`analyse_file`)
 Parses `scf.in` or `scf.out` to determine 2D material properties:
-*   **Stacking Order**: Heuristic detection of AA, AB, or AA' stacking in bilayers based on relative coordinates.
+*   **Stacking Order**: Heuristic detection of AA, AB, or AA' stacking in bilayers.
 *   **Interlayer Distance**: Calculates the vertical ($\Delta z$) distance between defined layers.
 
 #### 🔄 Consistency Converters
 Quantum ESPRESSO's `projwfc.x` has known quirks.
-*   **`convert_consistent`**: Fixes the "varying rows" issue where projections with zero weight are sometimes omitted by QE, breaking standard plotters. It forces a dense rectangular data grid.
-*   **`convert_soc_proj_to_ml`**: For **Spin-Orbit Coupling (SOC)** runs. QE outputs projections in the $(j, m_j)$ coupled basis. This tool uses Clebsch-Gordan coefficients to uncouple them back to the standard $(l, m_l)$ basis (e.g., $d_{xy}, d_{z^2}$) familiar to chemists.
+*   **`convert_consistent`**: Fixes the "varying rows" issue where projections with zero weight are omitted, breaking standard plotters. Forces a dense rectangular data grid.
+*   **`convert_soc_proj_to_ml`**: For **SOC** runs. Converts from the $(j, m_j)$ coupled basis to the standard $(l, m_l)$ basis (e.g., $d_{xy}, d_{z^2}$) using Clebsch-Gordan coefficients.
 
----
 ---
 
 ## 📁 Supported Input Files
@@ -154,17 +180,19 @@ Quantum ESPRESSO's `projwfc.x` has known quirks.
 | File | Description | Source |
 |------|-------------|--------|
 | `*.bands.dat.gnu` | Band structure data | `bands.x` |
-| `*.kpath` | High-symmetry k-points path | Custom / `qep` format |
+| `*.kpath` / `*.in` | High-symmetry k-points path (crystal_b) | Custom |
 | `scf.out` | Self-consistent field output | `pw.x` |
 | `proj.out` | Projections log | `projwfc.x` |
-| `*_pdos*` | Projected DOS files | `projwfc.x` |
+| `*_pdos*` | Projected DOS / fatband files | `projwfc.x` |
 | `*.dos` | Total DOS file | `dos.x` |
 
 ---
 
 ## 🎛️ Complete Parameter Reference
 
-The `plot_from_file` function is the main entry point. Below is the **exhaustive list** of all 33 available arguments.
+The `plot_from_file` function is the main entry point. Below is the **exhaustive list** of all available arguments.
+
+### Core Parameters
 
 | Parameter | Type | Default | Description |
 |:---|:---|:---|:---|
@@ -173,211 +201,238 @@ The `plot_from_file` function is the main entry point. Below is the **exhaustive
 | **`kpath_file`** | `str` | `None` | Path to K-path file (`crystal_b`). Required for Band/Fatbands. |
 | **`fermi_level`** | `float` | `None` | Fermi energy (eV). Essential for energy alignment. |
 | **`shift_fermi`** | `bool` | `False` | Moves Fermi level to 0 eV if `fermi_level` is provided. |
-| **`fatband_dir`** | `str` | `None` | Folder with `projwfc.x` outputs. Required for Fatbands. |
-| **`pdos_dir`** | `str` | `None` | Folder with `pdos` files. Required for PDOS plots. |
-| **`dos_file`** | `str` | `None` | Path to `dos.x` output file. Required for total DOS plots. |
 | **`y_range`** | `tuple` | `None` | Min/Max Y-axis limits. Example: `(-5, 5)`. |
-| **`spin`** | `bool` | `False` | Enable spin-polarized plotting (Up/Down channels). |
-| **`sub_orb`** | `bool` | `False` | Split orbitals into sub-components ($d_{z^2}$ etc.) instead of total ($l$). |
-| **`band_mode`** | `str` | `'normal'` | Band plot style: `'normal'`, `'atomic'`, `'orbital'`, `'element_orbital'`. |
-| **`fatbands_mode`** | `str` | `'most'` | Fatband style: `'atomic'`, `'orbital'`, `'element_orbital'`, `'heat_*'`, `'layer'`. |
-| **`pdos_mode`** | `str` | `'atomic'` | PDOS grouping: `'atomic'`, `'orbital'`, `'element_orbital'`. |
-| **`highlight_channel`** | `str/tuple` | `None` | Atoms/orbitals to highlight in Line/Heatmap modes. Ex: `('Mo',)` |
-| **`dual`** | `bool` | `False` | Compare two highlight channels in Line mode. |
-| **`layer_assignment`** | `dict` | `None` | **Layer Mode**: Map atoms to layers. Ex: `{'Mo1': 'L1', 'S2': 'L2'}`. |
-| **`s_min`** | `float` | `10` | Minimum marker size for bubble plots. |
-| **`s_max`** | `float` | `100` | Maximum marker size for bubble plots. |
-| **`weight_threshold`** | `float` | `0.01` | Ignore orbital weights below this value to reduce clutter. |
-| **`cmap_name`** | `str` | `'tab10'` | Matplotlib colormap name (e.g., `'viridis'`, `'magma'`). |
-| **`overlay_bands_in_heat`** | `bool` | `False` | Draw thin gray band lines on top of heatmap fatbands. |
-| **`heat_vmin`** | `float` | `None` | Minimum value for heatmap color normalization. |
-| **`heat_vmax`** | `float` | `None` | Maximum value for heatmap color normalization. |
-| **`plot_total_dos`** | `bool` | `False` | Plot Total DOS side-by-side with Fatbands. |
-| **`band_file2`** | `str` | `None` | **Overlay Mode**: Path to second band file. |
-| **`kpath_file2`** | `str` | `None` | **Overlay Mode**: Path to second K-path file. |
-| **`label1`** | `str` | `'Band 1'` | **Overlay Mode**: Legend label for first band. |
-| **`label2`** | `str` | `'Band 2'` | **Overlay Mode**: Legend label for second band. |
-| **`color1`** | `str` | `'red'` | **Overlay Mode**: Color for first band. |
-| **`color2`** | `str` | `'blue'` | **Overlay Mode**: Color for second band. |
+| **`dpi`** | `int` | `None` | Resolution for saved figures. |
 | **`save_dir`** | `str` | `'saved'` | Directory to save output images. |
 | **`savefig`** | `str` | `None` | Filename to save plot (e.g., `'fig1.png'`). If `None`, shows window. |
-| **`dpi`** | `int` | `None` | Resolution for saved figures (default: matplotlibrc). |
+
+### Band & Fatband Parameters
+
+| Parameter | Type | Default | Description |
+|:---|:---|:---|:---|
+| **`band_mode`** | `str` | `'normal'` | Band coloring: `'normal'`, `'atomic'`, `'orbital'`, `'element_orbital'`, `'most'`. |
+| **`fatband_dir`** | `str` | `None` | Folder with `projwfc.x` outputs. Required for Fatbands. |
+| **`fatbands_mode`** | `str` | `'most'` | Fatband style: `'most'`, `'atomic'`, `'orbital'`, `'heat_*'`, `'layer'`, `'o_*'`. |
+| **`spin`** | `bool` | `False` | Enable spin-polarized plotting. |
+| **`sub_orb`** | `bool` | `False` | Split orbitals into sub-components ($d_{z^2}$, etc.). |
+| **`highlight_channel`** | `str/tuple` | `None` | Atoms/orbitals to highlight. Ex: `'Mo'` or `('Mo', 'S')`. |
+| **`dual`** | `bool` | `False` | Two-channel comparison in Line mode. |
+| **`layer_assignment`** | `dict` | `None` | Layer Mode: Map atoms to layers. Ex: `{'Mo1': 'top', 'S2': 'bottom'}`. |
+| **`s_min`** | `float` | `10` | Minimum marker size (bubble plots). |
+| **`s_max`** | `float` | `100` | Maximum marker size (bubble plots). |
+| **`weight_threshold`** | `float` | `0.01` | Ignore orbital weights below this value. |
+| **`cmap_name`** | `str` | `'tab10'` | Matplotlib colormap name. |
+| **`show_band_gap`** | `bool` | `False` | Detect and annotate VBM/CBM band gap on the plot. |
+| **`scf_file`** | `str` | `None` | Path to `scf.out` for accurate SCF-based gap detection. |
+
+### DOS Parameters
+
+| Parameter | Type | Default | Description |
+|:---|:---|:---|:---|
+| **`dos_file`** | `str` | `None` | Path to `dos.x` output. Required for DOS plots. |
+| **`pdos_dir`** | `str` | `None` | Folder with `pdos` files. Required for PDOS plots. |
+| **`pdos_mode`** | `str` | `'atomic'` | PDOS grouping: `'atomic'`, `'orbital'`, `'element_orbital'`. |
+| **`plot_total_dos`** | `bool` | `False` | Plot Total DOS side panel with Band/Fatband plots. |
+| **`x_range`** | `tuple` | `None` | DOS axis range for side panel. |
+| **`vertical`** | `bool` | `False` | Rotate DOS plot (Energy on Y-axis). |
+
+### Heatmap Parameters
+
+| Parameter | Type | Default | Description |
+|:---|:---|:---|:---|
+| **`overlay_bands_in_heat`** | `bool` | `False` | Draw band lines on top of heatmap. |
+| **`heat_vmin`** | `float` | `None` | Minimum for heatmap color normalization. |
+| **`heat_vmax`** | `float` | `None` | Maximum for heatmap color normalization. |
+
+### Overlay Parameters
+
+| Parameter | Type | Default | Description |
+|:---|:---|:---|:---|
+| **`band_file2`** | `str` | `None` | Path to second band file. |
+| **`kpath_file2`** | `str` | `None` | Path to second K-path file. |
+| **`label1`** | `str` | `'Band 1'` | Legend label for first band. |
+| **`label2`** | `str` | `'Band 2'` | Legend label for second band. |
+| **`color1`** | `str` | `'red'` | Color for first band. |
+| **`color2`** | `str` | `'blue'` | Color for second band. |
 
 ---
 
-## 🖼️ Detailed Plot Examples
-
-Here are comprehensive examples for various scenarios. You can run these in a Python script (e.g., `run_plot.py`) by importing `qep`.
+## 🖼️ Plot Examples
 
 ### 1. Basic Band Structure (Spin-Polarized)
-*Standard band plot with spin up/down.*
 
 ```python
-import qep
+from qeplotter import plot_from_file
 
-qep.plot_from_file(
+plot_from_file(
     plot_type='band',
-    band_file='molybden.bands.dat.gnu',  # Your QE bands file
-    kpath_file='molybden.kpath',         # Your K-points path
-    fermi_level=6.234,                   # E_F from scf.out
-    shift_fermi=True,                    # Shift so 0 eV is Fermi level
-    y_range=(-4, 6),                     # Show 4eV below and 6eV above Fermi
-    band_mode='normal',                  # Simple black lines
-    spin=True                            # Enable spin-polarized plotting
-)
-```
-
-### 2. Fatbands: Atomic Contribution (Bubble Plot)
-*Bubble size indicates how much a specific atom contributes to the band.*
-
-```python
-qep.plot_from_file(
-    plot_type='fatbands',
     band_file='molybden.bands.dat.gnu',
     kpath_file='molybden.kpath',
-    fatband_dir='./pdos_files',          # Folder with projwfc.x outputs
-    fatbands_mode='atomic',              # Color bubbles by Atom ID (Mo1, S2...)
     fermi_level=6.234,
     shift_fermi=True,
-    s_min=1, s_max=150,                  # Min/Max size of bubbles
+    y_range=(-4, 6),
+    band_mode='normal',
     spin=True
 )
 ```
 
-### 3. Fatbands: Orbital Heatmap
-*Best for complex systems. Heatmap intensity shows orbital character (e.g., d-orbitals).*
+### 2. Band Structure with Band Gap Annotation
 
 ```python
-qep.plot_from_file(
-    plot_type='fatbands',
+from qeplotter import plot_from_file
+
+plot_from_file(
+    plot_type='band',
     band_file='Bi2Se3.bands.dat.gnu',
     kpath_file='Bi2Se3.kpath',
-    fatband_dir='./Bi2Se3_pdos', 
-    fatbands_mode='heat_orbital',        # Heatmap based on s/p/d/f orbitals
-    highlight_channel=('p',),            # Highlight 'p' orbitals specifically
-    fermi_level=4.11,
+    fermi_level=-4.22,
     shift_fermi=True,
-    cmap_name='inferno',                 # 'magma', 'viridis', 'plasma', etc.
-    heat_vmax=10.0,                      # Contrast adjustment for heatmap
-    overlay_bands_in_heat=True           # Draw thin band lines over the heatmap
+    y_range=(-3, 3),
+    show_band_gap=True,                  # Annotate VBM/CBM with arrow
+    scf_file='scf.out'                   # Use SCF data for accurate gap
 )
 ```
 
-### 4. Element-Orbital Decomposition (Detailed)
-*Distinguish between Mo-d states and S-p states with different colors.*
+### 3. Fatbands: Atomic Contribution (Bubble Plot)
 
 ```python
-qep.plot_from_file(
+from qeplotter import plot_from_file
+
+plot_from_file(
+    plot_type='fatbands',
+    band_file='molybden.bands.dat.gnu',
+    kpath_file='molybden.kpath',
+    fatband_dir='./pdos_files',
+    fatbands_mode='atomic',
+    fermi_level=6.234,
+    shift_fermi=True,
+    s_min=1, s_max=150,
+    spin=True
+)
+```
+
+### 4. Fatbands: Orbital Heatmap
+
+```python
+from qeplotter import plot_from_file
+
+plot_from_file(
+    plot_type='fatbands',
+    band_file='Bi2Se3.bands.dat.gnu',
+    kpath_file='Bi2Se3.kpath',
+    fatband_dir='./Bi2Se3_pdos',
+    fatbands_mode='heat_orbital',
+    highlight_channel='p',
+    fermi_level=4.11,
+    shift_fermi=True,
+    cmap_name='inferno',
+    heat_vmax=10.0,
+    overlay_bands_in_heat=True
+)
+```
+
+### 5. Element-Orbital Decomposition
+
+```python
+from qeplotter import plot_from_file
+
+plot_from_file(
     plot_type='fatbands',
     band_file='MoS2.bands.dat.gnu',
     kpath_file='MoS2.kpath',
     fatband_dir='./pdos',
-    fatbands_mode='element_orbital',     # e.g., Mo-s, Mo-p, Mo-d, S-s, S-p...
+    fatbands_mode='element_orbital',
     fermi_level=1.5,
-    weight_threshold=0.1,                # Ignore contributions < 10% to clean up plot
+    weight_threshold=0.1,
     spin=False
 )
 ```
 
-### 5. Overlay Band Structure (Comparison)
-*Compare two different calculations (e.g., Bulk vs Monolayer, or Theory vs Theory).*
+### 6. Overlay Band Comparison
 
 ```python
-qep.plot_from_file(
+from qeplotter import plot_from_file
+
+plot_from_file(
     plot_type='overlay_band',
-    # --- System 1 (e.g., Monolayer) ---
     band_file='MoS2_ML.bands.gnu',
     kpath_file='MoS2.kpath',
-    label1='Monolayer',
-    color1='red',
-    
-    # --- System 2 (e.g., Bulk) ---
+    label1='Monolayer', color1='red',
     band_file2='MoS2_Bulk.bands.gnu',
     kpath_file2='MoS2.kpath',
-    label2='Bulk',
-    color2='blue',
-    
+    label2='Bulk', color2='blue',
     fermi_level=5.0,
     shift_fermi=True
 )
 ```
 
-### 6. Sub-Orbital Analysis ($d_{z^2}$, $d_{xy}$, etc.)
-*Deep dive into crystal field splitting.*
-
-```python
-qep.plot_from_file(
-    plot_type='fatbands',
-    band_file='oxide.bands.gnu',
-    kpath_file='oxide.kpath',
-    fatband_dir='./pdos',
-    fatbands_mode='orbital',
-    sub_orb=True,                        # <--- Enables splitting d -> dz2, dxy...
-    fermi_level=7.0,
-    shift_fermi=True
-)
-```
-
 ### 7. Layer-Resolved Fatbands
-*For 2D heterostructures: See which layer contributes to which band.*
 
 ```python
-# Define which atoms belong to which layer
+from qeplotter import plot_from_file
+
 layer_map = {
-    'Mo1': 'Layer1', 'S2': 'Layer1', 'S3': 'Layer1',
-    'W4':  'Layer2', 'Se5': 'Layer2', 'Se6': 'Layer2'
+    'Mo1': 'top', 'S2': 'top', 'S3': 'top',
+    'W4':  'bottom', 'Se5': 'bottom', 'Se6': 'bottom'
 }
 
-qep.plot_from_file(
+plot_from_file(
     plot_type='fatbands',
     band_file='hetero.bands.gnu',
     kpath_file='hetero.kpath',
     fatband_dir='./pdos',
-    fatbands_mode='layer',               # Activate Layer mode
-    layer_assignment=layer_map,          # Pass the mapping
+    fatbands_mode='layer',
+    layer_assignment=layer_map,
     fermi_level=3.5
 )
 ```
 
-### 8. Total DOS Plot
-*Simple Density of States.*
+### 8. Total DOS
 
 ```python
-qep.plot_from_file(
+from qeplotter import plot_from_file
+
+plot_from_file(
     plot_type='dos',
-    dos_file='system.dos',               # Output from dos.x
+    dos_file='system.dos',
     fermi_level=5.4,
-    y_range=(-10, 10),                   # DOS value range (x-axis typically)
     shift_fermi=True,
-    savefig='dos_plot.pdf'               # Save as PDF
+    vertical=True,
+    savefig='dos_plot.pdf'
 )
 ```
 
 ### 9. Projected DOS (PDOS)
-*DOS resolved by atom or orbital.*
 
 ```python
-qep.plot_from_file(
+from qeplotter import plot_from_file
+
+plot_from_file(
     plot_type='pdos',
-    fatband_dir='./pdos',                # Directory with projwfc.x files
-    pdos_mode='element_orbital',         # Group by Element+Orbital (Mo-d, S-p)
+    pdos_dir='./pdos',
+    pdos_mode='element_orbital',
     fermi_level=5.4,
     shift_fermi=True
 )
 ```
 
-### 10. High-Quality Customization
-*Control resolution and saving.*
+### 10. Band + DOS Side-by-Side with Gap
 
 ```python
-qep.plot_from_file(
+from qeplotter import plot_from_file
+
+plot_from_file(
     plot_type='band',
     band_file='data.gnu',
     kpath_file='path.kpath',
-    dpi=300,                             # High resolution for print
-    savefig='figure_1.tiff',             # TIFF format
     fermi_level=0.0,
-    font_family='serif'                  # (Optional internal customization)
+    shift_fermi=True,
+    plot_total_dos=True,
+    dos_file='system.dos',
+    show_band_gap=True,
+    scf_file='scf.out',
+    dpi=300,
+    savefig='figure_1.png'
 )
 ```
 
