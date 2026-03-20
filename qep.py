@@ -55,7 +55,6 @@ def strip_number(atom_label):
 # ==============================
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-SCRIPT_DIR = os.path.dirname(SCRIPT_DIR)
 def parse_kpath_file(kpath_file):
     """
     Parses a Quantum ESPRESSO K_POINTS (crystal_b) file to extract the number of k-points
@@ -398,6 +397,234 @@ def read_fatband_files(fatband_dir,spin=False,sub_orb=False):
 
 
 # ==============================
+# BAND GAP DETECTION & ANNOTATION
+# ==============================
+
+def _parse_scf_gap(scf_file):
+    """
+    Parse HOMO/LUMO from QE scf.out file.
+
+    Returns
+    -------
+    tuple (homo, lumo) or None
+    """
+    if scf_file is None:
+        return None
+    try:
+        with open(scf_file, 'r', errors='ignore') as f:
+            content = f.read()
+
+        # Metal: "the Fermi energy is X eV"
+        m = re.search(r"the Fermi energy is\s+([-+]?\d*\.?\d+)\s+eV", content)
+        if m:
+            ef = float(m.group(1))
+            return (ef, ef)  # no gap for metals, but return for reference
+
+        # Insulator: "highest occupied, lowest unoccupied level (ev): HOMO LUMO"
+        m2 = re.search(r"highest occupied, lowest unoccupied level \(ev\):\s+([-+]?\d*\.?\d+)\s+([-+]?\d*\.?\d+)", content)
+        if m2:
+            return (float(m2.group(1)), float(m2.group(2)))
+
+        # "highest occupied level (ev): X"
+        m3 = re.search(r"highest occupied level\s*\(ev\):\s+([-+]?\d*\.?\d+)", content)
+        if m3:
+            return (float(m3.group(1)), None)
+
+        return None
+    except Exception:
+        return None
+
+
+def _find_band_gap(x_dist, band_energies, fermi_level=None, shift_fermi=False, scf_file=None):
+    """
+    Detect VBM and CBM from band data.
+
+    If scf_file is provided, uses HOMO/LUMO from SCF output for more accurate detection.
+    Otherwise falls back to Fermi-level based detection.
+
+    Parameters
+    ----------
+    x_dist : np.ndarray, shape (N_k,)
+    band_energies : np.ndarray, shape (N_bands, N_k)
+        Already Fermi-shifted if shift_fermi was applied.
+    fermi_level : float or None
+    shift_fermi : bool
+    scf_file : str or None
+        Path to scf.out file for accurate HOMO/LUMO reference.
+
+    Returns
+    -------
+    dict or None
+    """
+    scf_data = _parse_scf_gap(scf_file) if scf_file else None
+
+    if scf_data is not None:
+        homo_abs, lumo_abs = scf_data
+        if lumo_abs is None or homo_abs == lumo_abs:
+            # Metal or no LUMO — no gap
+            print(f"SCF: metallic or no gap (HOMO={homo_abs})")
+            return None
+
+        # Apply Fermi shift to HOMO/LUMO if band_energies is shifted
+        if shift_fermi and fermi_level is not None:
+            homo = homo_abs - fermi_level
+            lumo = lumo_abs - fermi_level
+        else:
+            homo = homo_abs
+            lumo = lumo_abs
+
+        gap = lumo - homo
+
+        # Find k-point in band data closest to HOMO/LUMO energies
+        # VBM: max energy <= homo (with tolerance)
+        below_mask = band_energies <= homo + 0.05
+        above_mask = band_energies >= lumo - 0.05
+
+        if not np.any(below_mask) or not np.any(above_mask):
+            print(f"SCF gap={gap:.3f} eV but could not locate VBM/CBM on band path")
+            return None
+
+        # Find the closest band energy to HOMO
+        vbm_e = np.max(band_energies[below_mask])
+        cbm_e = np.min(band_energies[above_mask])
+
+        vbm_idx = np.argwhere(np.isclose(band_energies, vbm_e, atol=1e-4))
+        cbm_idx = np.argwhere(np.isclose(band_energies, cbm_e, atol=1e-4))
+
+        if len(vbm_idx) == 0 or len(cbm_idx) == 0:
+            return None
+
+        vbm_band, vbm_k = vbm_idx[0]
+        cbm_band, cbm_k = cbm_idx[0]
+        is_direct = (vbm_k == cbm_k)
+
+        # Use the band structure VBM/CBM for the gap value (on the k-path)
+        actual_gap = cbm_e - vbm_e
+
+        print(f"SCF reference: HOMO={homo_abs:.4f}, LUMO={lumo_abs:.4f}, SCF gap={gap:.3f} eV")
+
+        return {
+            'gap': actual_gap,
+            'vbm_e': vbm_e,
+            'cbm_e': cbm_e,
+            'vbm_x': x_dist[vbm_k],
+            'cbm_x': x_dist[cbm_k],
+            'vbm_k': int(vbm_k),
+            'cbm_k': int(cbm_k),
+            'is_direct': is_direct,
+        }
+
+    # Fallback: Fermi-level based detection
+    if fermi_level is None:
+        return None
+
+    # Reference energy: 0 if shifted, fermi_level if not
+    e_ref = 0.0 if shift_fermi else fermi_level
+
+    # All energies below or at Fermi
+    below_mask = band_energies <= e_ref + 1e-7
+    above_mask = band_energies > e_ref
+
+    if not np.any(below_mask) or not np.any(above_mask):
+        return None  # metallic or no states
+
+    vbm_e = np.max(band_energies[below_mask])
+    cbm_e = np.min(band_energies[above_mask])
+    gap = cbm_e - vbm_e
+
+    if gap <= 0:
+        return None  # metallic
+
+    # Find k-point positions of VBM and CBM
+    vbm_idx = np.argwhere(np.isclose(band_energies, vbm_e, atol=1e-6))
+    cbm_idx = np.argwhere(np.isclose(band_energies, cbm_e, atol=1e-6))
+
+    if len(vbm_idx) == 0 or len(cbm_idx) == 0:
+        return None
+
+    # Take first occurrence: [band_idx, k_idx]
+    vbm_band, vbm_k = vbm_idx[0]
+    cbm_band, cbm_k = cbm_idx[0]
+
+    is_direct = (vbm_k == cbm_k)
+
+    return {
+        'gap': gap,
+        'vbm_e': vbm_e,
+        'cbm_e': cbm_e,
+        'vbm_x': x_dist[vbm_k],
+        'cbm_x': x_dist[cbm_k],
+        'vbm_k': int(vbm_k),
+        'cbm_k': int(cbm_k),
+        'is_direct': is_direct,
+    }
+
+
+def _annotate_band_gap(ax, gap_info):
+    """
+    Draw a band gap arrow annotation on the plot axis.
+
+    Parameters
+    ----------
+    ax : matplotlib Axes
+    gap_info : dict from _find_band_gap
+    """
+    if gap_info is None:
+        return
+
+    vbm_e = gap_info['vbm_e']
+    cbm_e = gap_info['cbm_e']
+    vbm_x = gap_info['vbm_x']
+    cbm_x = gap_info['cbm_x']
+    gap = gap_info['gap']
+    is_direct = gap_info['is_direct']
+
+    # Mark VBM and CBM points
+    ax.plot(vbm_x, vbm_e, 'o', color='blue', markersize=6, zorder=10)
+    ax.plot(cbm_x, cbm_e, 'o', color='blue', markersize=6, zorder=10)
+
+    if is_direct:
+        # Direct gap: vertical double-headed arrow
+        ax.annotate(
+            '', xy=(vbm_x, cbm_e), xytext=(vbm_x, vbm_e),
+            arrowprops=dict(arrowstyle='<->', color='blue', lw=1.5),
+            zorder=10
+        )
+        # Label next to arrow
+        mid_e = 0.5 * (vbm_e + cbm_e)
+        ax.text(
+            vbm_x + 0.02 * (ax.get_xlim()[1] - ax.get_xlim()[0]),
+            mid_e,
+            f'$E_g$ = {gap:.3f} eV',
+            fontsize=9, fontweight='bold', color='blue',
+            ha='left', va='center',
+            bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.85, edgecolor='blue'),
+            zorder=11
+        )
+    else:
+        # Indirect gap: angled arrow from VBM to CBM
+        ax.annotate(
+            '', xy=(cbm_x, cbm_e), xytext=(vbm_x, vbm_e),
+            arrowprops=dict(arrowstyle='->', color='blue', lw=1.5, ls='--'),
+            zorder=10
+        )
+        # Label at midpoint
+        mid_x = 0.5 * (vbm_x + cbm_x)
+        mid_e = 0.5 * (vbm_e + cbm_e)
+        ax.text(
+            mid_x, mid_e,
+            f'$E_g$ = {gap:.3f} eV\n(indirect)',
+            fontsize=9, fontweight='bold', color='blue',
+            ha='center', va='bottom',
+            bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.85, edgecolor='blue'),
+            zorder=11
+        )
+
+    gap_type = "direct" if is_direct else "indirect"
+    print(f"Band gap: {gap:.3f} eV ({gap_type}), VBM at x={vbm_x:.3f} E={vbm_e:.3f}, CBM at x={cbm_x:.3f} E={cbm_e:.3f}")
+
+
+# ==============================
 # PLOTTING FUNCTIONS
 # ==============================
 
@@ -487,7 +714,9 @@ def plot_band(
     sub_orb=False,
     plot_total_dos=False,
     dos_file=None,
-    x_range=None
+    x_range=None,
+    show_band_gap=False,
+    scf_file=None
 ):
     """
        Plot the electronic band structure from Quantum ESPRESSO.
@@ -673,6 +902,7 @@ def plot_band(
     if plot_total_dos:
         # Side-by-side means Energy on Y, DOS on X (Standard Vertical Layout)
         ax2.plot(DOS, E_dos, 'k-', lw=1, label='Total DOS')
+        ax2.fill_betweenx(E_dos, 0, DOS, alpha=0.3, color='gray')
         ax2.set_xlabel('DOS')
         ax2.set_title("Total DOS")
         
@@ -681,16 +911,14 @@ def plot_band(
             ax2.set_ylim(y_range)
         if x_range:
             ax2.set_xlim(x_range)
+        else:
+            ax2.set_xlim(0, None)
             
         # Draw Fermi Line
         if fermi_level is not None:
              y0 = 0.0 if shift_fermi else fermi_level
-             # Show original Fermi value in legend, consistent with plot_dos
              label_f = f'Fermi = {fermi_level:.2f} eV' 
              ax2.axhline(y0, color='r', ls='--', lw=1.2, label=label_f)
-        else:
-             # Just a zero line if no fermi info
-             ax2.axhline(0, color='gray', ls='--', lw=0.8)
 
         ax2.grid(True, ls='--', alpha=0.4)
         
@@ -699,6 +927,12 @@ def plot_band(
         
         if fermi_level is not None:
              ax2.legend(fontsize='small', loc='upper right')
+
+
+    # --- BAND GAP ANNOTATION ---
+    if show_band_gap:
+        gap_info = _find_band_gap(x_dist, band_energies, fermi_level, shift_fermi, scf_file=scf_file)
+        _annotate_band_gap(ax1, gap_info)
 
     plt.tight_layout()
     if savefig:
@@ -908,9 +1142,6 @@ def plot_pdos_dir(pdos_dir, fermi_level=None,
     if fermi_level is not None:
         x0 = 0.0 if shift_fermi else fermi_level
         plt.axvline(x0, color='r', ls='--', lw=1.2, label=f'Fermi = {fermi_level:.2f} eV')
-    if fermi_level is not None:
-        x0 = 0.0 if shift_fermi else fermi_level
-        plt.axvline(x0, color='r', ls='--', lw=1.2, label=f'Fermi = {fermi_level:.2f} eV')
     
     xlabel = 'E - E_F (eV)' if (shift_fermi and fermi_level is not None) else 'Energy (eV)'
     plt.xlabel(xlabel)
@@ -956,7 +1187,9 @@ def plot_fatbands(
         savefig=None,
         spin=False,
         sub_orb=False,
-        x_range=None
+        x_range=None,
+        show_band_gap=False,
+        scf_file=None
 ):
     """
       Plot fatbands from Quantum ESPRESSO data.
@@ -1183,7 +1416,8 @@ def plot_fatbands(
         ax1.set_xticks(tick_positions)
         ax1.set_xticklabels(tick_labels)
         ax1.set_xlabel('K-point Path')
-        ax1.set_ylabel('Energy (eV)')
+        ylabel = 'E - E_F (eV)' if (shift_fermi and fermi_level is not None) else 'Energy (eV)'
+        ax1.set_ylabel(ylabel)
         if y_range:
             ax1.set_ylim(y_range)
         title_mode = mode.capitalize() if mode!='most' else 'Most'
@@ -1196,18 +1430,31 @@ def plot_fatbands(
         # Total DOS panel
         if plot_total_dos:
             ax2.plot(DOS, E_dos, 'k-', lw=1)
+            ax2.fill_betweenx(E_dos, 0, DOS, alpha=0.3, color='gray')
             ax2.set_xlabel('DOS')
             if y_range:
                 ax2.set_ylim(y_range)
             if x_range:
                 ax2.set_xlim(x_range)
-            ax2.axvline(0, color='gray', ls='--', lw=0.8)
+            else:
+                ax2.set_xlim(0, None)
+            if fermi_level is not None:
+                y0 = 0.0 if shift_fermi else fermi_level
+                ax2.axhline(y0, color='r', ls='--', lw=1.0)
             ax2.grid(True, ls='--', alpha=0.3)
+            plt.setp(ax2.get_yticklabels(), visible=False)
+
+        # --- BAND GAP ANNOTATION ---
+        if show_band_gap:
+            _be = band_energies - fermi_level if (shift_fermi and fermi_level is not None) else band_energies
+            gap_info = _find_band_gap(x_dist, _be, fermi_level, shift_fermi, scf_file=scf_file)
+            _annotate_band_gap(ax1, gap_info)
+
         plt.tight_layout()
         if savefig:
-            SAVE_DIR = os.path.join(SCRIPT_DIR, "saved")
-            os.makedirs(SAVE_DIR, exist_ok=True)
-            out = os.path.join(SAVE_DIR, os.path.basename(savefig))
+            if not os.path.exists(save_dir):
+                os.makedirs(save_dir)
+            out = os.path.join(save_dir, os.path.basename(savefig))
             plt.savefig(out, dpi=dpi or plt.rcParams['figure.dpi'])
             print(f"Saved figure to {out}")
 
@@ -1218,34 +1465,22 @@ def plot_fatbands(
     elif mode in line_modes or mode == 'layer':
 
         if mode == 'layer':
-
             atom_name_fn = lambda x: x
-
         else:
-
             atom_name_fn = strip_number
 
-        elems = [a for (a, _) in labels]  # 'W1', 'S2', ...
+        elems = [a for (a, _) in labels]
         orbs = [o for (_, o) in labels]
         ch_labels = [f"{a}-{o}" for (a, o) in labels]
 
-        
-
         if mode == 'layer':
-            # 1. Unique atom names from labels (now like 'W1', 'Mo2', 'S3' ...)
             atom_names = sorted(set(a for (a, _) in labels))
-
-            # 2. Use provided assignment, raise if not provided or incomplete
             if layer_assignment is None:
                 raise ValueError("You must provide layer_assignment as a dict when using mode='layer'.")
-
-            # 3. Validate all atoms are in assignment
             for atom in atom_names:
                 if atom not in layer_assignment:
                     raise ValueError(f"layer_assignment is missing entry for atom '{atom}'. "
                                      f"Please supply all atoms: {atom_names}")
-
-            # 4. Sum weights by layer
             W_top = np.zeros((N_k, N_e))
             W_bottom = np.zeros((N_k, N_e))
             for i, (a, o) in enumerate(labels):
@@ -1256,326 +1491,205 @@ def plot_fatbands(
                 else:
                     raise ValueError(
                         f"layer_assignment for atom '{a}' must be 'top' or 'bottom', not '{layer_assignment[a]}'.")
-
             W_sum = W_top + W_bottom
             W_sum[W_sum <= 0] = np.nan
-            frac = W_top / W_sum  # 1 = all top, 0 = all bottom
+            frac = W_top / W_sum
             colorbar_label = 'Fraction of Top Layer (0=Bottom, 1=Top)'
 
         elif mode in line_modes:
-
             if dual:
-
                 if isinstance(highlight_channel, str):
-
                     groups = [g.strip() for g in highlight_channel.split(',')]
-
                 elif isinstance(highlight_channel, (list, tuple)):
-
                     groups = list(highlight_channel)
-
                 else:
-
                     raise ValueError(
-
                         "For dual=True, highlight_channel must be 'g1,g2' or a two-element list/tuple"
-
                     )
-
                 if len(groups) != 2:
                     raise ValueError(f"dual mode needs exactly two groups, got {groups!r}")
-
                 key1, key2 = groups
-
                 if mode == 'o_atomic':
-
                     valid = sorted(set([a for (a, _) in labels]))
-
-
-
                 elif mode == 'o_orbital':
-
                     valid = sorted(set(orbs))
-
                 else:
-
                     valid = sorted(set(ch_labels))
-
                 if key1 not in valid or key2 not in valid:
                     raise ValueError(f"dual keys {groups!r} must be among {valid}")
-
                 W1 = np.zeros((N_k, N_e))
-
                 W2 = np.zeros((N_k, N_e))
-
                 if mode == 'o_atomic':
                     for i, (a, _) in enumerate(labels):
                         if a == key1:
                             W1 += W_grids[i]
                         elif a == key2:
                             W2 += W_grids[i]
-
                 elif mode == 'o_orbital':
-
                     for i, o in enumerate(orbs):
-
                         if o == key1:
                             W1 += W_grids[i]
-
                         elif o == key2:
                             W2 += W_grids[i]
-
                 else:
-
                     for i, lab in enumerate(ch_labels):
-
                         if lab == key1:
                             W1 += W_grids[i]
-
                         elif lab == key2:
                             W2 += W_grids[i]
-
                 W12 = W1 + W2
-
                 W12_safe = W12.copy()
-
                 W12_safe[W12_safe <= 0] = np.nan
-
                 frac = W2 / W12_safe
-
                 colorbar_label = f'Fraction of {key2}   (0={key1}, 1={key2})'
-
             else:
-
                 if mode == 'o_atomic':
-
                     if highlight_channel is None:
                         raise ValueError("highlight_channel must be provided for o_atomic mode")
-
                     unique_atoms = sorted(set(elems))
-
                     if highlight_channel not in unique_atoms:
                         raise ValueError(f"highlight_channel '{highlight_channel}' not in atomic keys {unique_atoms}")
-
-                    Wtot = np.zeros((N_k, N_e));
+                    Wtot = np.zeros((N_k, N_e))
                     Whigh = np.zeros((N_k, N_e))
-
                     for idx, a in enumerate(elems):
-
                         Wtot += W_grids[idx]
-
                         if a == highlight_channel:
                             Whigh += W_grids[idx]
-
                 elif mode == 'o_orbital':
-
                     if highlight_channel is None:
                         raise ValueError("highlight_channel must be provided for o_orbital mode")
-
                     unique_orbs = sorted(set(orbs))
-
                     if highlight_channel not in unique_orbs:
                         raise ValueError(f"highlight_channel '{highlight_channel}' not in orbital keys {unique_orbs}")
-
-                    Wtot = np.zeros((N_k, N_e));
+                    Wtot = np.zeros((N_k, N_e))
                     Whigh = np.zeros((N_k, N_e))
-
                     for idx, o in enumerate(orbs):
-
                         Wtot += W_grids[idx]
-
                         if o == highlight_channel:
                             Whigh += W_grids[idx]
-
                 elif mode == 'o_element_orbital':
-
                     if highlight_channel is None:
                         raise ValueError("highlight_channel must be provided for o_element_orbital mode")
-
                     unique_eo = sorted(set(ch_labels))
-
                     if highlight_channel not in unique_eo:
                         raise ValueError(
                             f"highlight_channel '{highlight_channel}' not in element-orbital keys {unique_eo}")
-
-                    Wtot = np.zeros((N_k, N_e));
+                    Wtot = np.zeros((N_k, N_e))
                     Whigh = np.zeros((N_k, N_e))
-
                     for idx, lab in enumerate(ch_labels):
-
                         Wtot += W_grids[idx]
-
                         if lab == highlight_channel:
                             Whigh += W_grids[idx]
-
                 else:  # normal
-
                     Wtot = np.ones((N_k, N_e))
-
                     Whigh = np.zeros((N_k, N_e))
-
                 Wtot_safe = Wtot.copy()
-
                 Wtot_safe[Wtot_safe <= 0] = np.nan
-
                 frac = Whigh / Wtot_safe
-
                 colorbar_label = f'Fraction of {highlight_channel}'
 
-        # ------ PLOTTING PART (shared for all line/layer modes) ------
-
+        # ------ PLOTTING (shared for all line/layer modes) ------
         cmap = plt.get_cmap(cmap_name)
-
         norm = plt.Normalize(0.0, 1.0)
-
         nbands = band_energies.shape[0]
 
         if plot_total_dos:
-
             if dpi is not None:
-
                 fig, (ax1, ax2) = plt.subplots(1, 2, gridspec_kw={'width_ratios': [3, 1]},
-
                                                figsize=(10, 6), dpi=dpi, sharey=True)
-
             else:
-
                 fig, (ax1, ax2) = plt.subplots(1, 2, gridspec_kw={'width_ratios': [3, 1]},
-
                                                figsize=(10, 6), sharey=True)
-
         else:
-
             if dpi is not None:
-
                 fig, ax1 = plt.subplots(1, 1, figsize=(8, 6), dpi=dpi)
-
             else:
-
                 fig, ax1 = plt.subplots(1, 1, figsize=(8, 6))
-
             ax2 = None
 
         for b in range(nbands):
-
             y_line = band_energies[b].copy()
-
             if shift_fermi and fermi_level is not None:
                 y_line = y_line - fermi_level
-
             x_line = x_dist
-
             for (s, e) in seg_ranges:
-
                 if e <= s:
                     continue
-
-                xs = x_line[s:e + 1];
+                xs = x_line[s:e + 1]
                 ys = y_line[s:e + 1]
-
                 points = np.array([xs, ys]).T.reshape(-1, 1, 2)
-
                 segments = np.concatenate([points[:-1], points[1:]], axis=1)
-
                 frac_vals = []
-
                 for i_k in range(s, e + 1):
-
                     Eb = band_energies[b, i_k]
-
                     Eb0 = Eb - fermi_level if (shift_fermi and fermi_level is not None) else Eb
-
                     row = E_grid[i_k, :]
-
                     j = np.argmin(np.abs(row - Eb0))
-
                     fv = frac[i_k, j]
-
                     if np.isnan(fv): fv = 0.0
-
                     frac_vals.append(fv)
-
                 frac_seg = 0.5 * (np.array(frac_vals[:-1]) + np.array(frac_vals[1:]))
-
                 lc = mcoll.LineCollection(segments, array=frac_seg, cmap=cmap,
-
                                           norm=norm, linewidth=2, zorder=1)
-
                 ax1.add_collection(lc)
 
         ax1.set_xticks(tick_positions)
-
         ax1.set_xticklabels(tick_labels)
-
         ax1.set_xlabel('K-point Path')
-
-        ax1.set_ylabel('Energy (eV)')
-
+        ylabel = 'E - E_F (eV)' if (shift_fermi and fermi_level is not None) else 'Energy (eV)'
+        ax1.set_ylabel(ylabel)
         if y_range:
             ax1.set_ylim(y_range)
-
         if mode == 'layer':
-
             ax1.set_title('Fatbands (Layer)')
-
         else:
-
             title_mode = mode if mode != 'normal' else f"Highlight {highlight_channel}"
-
             ax1.set_title(f'Fatbands ({title_mode})')
-
         sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
-
         sm.set_array([])
-
         cbar = plt.colorbar(sm, ax=ax1, pad=0.02)
-
         cbar.set_label(colorbar_label)
 
         if overlay_bands_in_heat:
-
             for band in band_energies:
-
                 for (s, e) in seg_ranges:
-
                     if e > s:
-
-                        y = band[s:e + 1];
+                        y = band[s:e + 1]
                         x = x_dist[s:e + 1]
-
                         if shift_fermi and fermi_level is not None:
                             y = y - fermi_level
-
                         ax1.plot(x, y, color='lightgray', lw=0.5, zorder=0)
-
                     else:
-
-                        x = x_dist[s];
+                        x = x_dist[s]
                         y = band[s]
-
                         if shift_fermi and fermi_level is not None:
                             y = y - fermi_level
-
                         ax1.plot(x, y, color='lightgray', lw=0.5, zorder=0)
 
         ax1.grid(True, ls='--', alpha=0.3)
-
-
 
         # Total DOS panel for line/layer modes
         if plot_total_dos:
-            if shift_fermi and fermi_level is not None:
-                E_dos_plot = E_dos
-            else:
-                E_dos_plot = E_dos
-            ax2.plot(DOS, E_dos_plot, 'k-', lw=1)
+            ax2.plot(DOS, E_dos, 'k-', lw=1)
+            ax2.fill_betweenx(E_dos, 0, DOS, alpha=0.3, color='gray')
             ax2.set_xlabel('DOS')
             if y_range:
                 ax2.set_ylim(y_range)
             if x_range:
                 ax2.set_xlim(x_range)
-            ax2.axvline(0, color='gray', ls='--', lw=0.8)
+            else:
+                ax2.set_xlim(0, None)
+            if fermi_level is not None:
+                y0 = 0.0 if shift_fermi else fermi_level
+                ax2.axhline(y0, color='r', ls='--', lw=1.0)
             ax2.grid(True, ls='--', alpha=0.3)
+            plt.setp(ax2.get_yticklabels(), visible=False)
+
+        # --- BAND GAP ANNOTATION ---
+        if show_band_gap:
+            _be = band_energies - fermi_level if (shift_fermi and fermi_level is not None) else band_energies
+            gap_info = _find_band_gap(x_dist, _be, fermi_level, shift_fermi, scf_file=scf_file)
+            _annotate_band_gap(ax1, gap_info)
 
         plt.tight_layout()
         if savefig:
@@ -1589,485 +1703,9 @@ def plot_fatbands(
         return
 
 
-    elems = [atom_name_fn(a) for (a, _) in labels]
-    orbs = [o for (_, o) in labels]
-    ch_labels = [f"{atom_name_fn(a)}-{o}" for (a, o) in labels]
-    bubble_modes = {'most','atomic','orbital','element_orbital'}
-    line_modes = {'normal','o_atomic','o_orbital','o_element_orbital'}
-    heat_modes = {'heat_total','heat_atomic','heat_orbital','heat_element_orbital'}
-
-
-    if mode in bubble_modes:
-        # Build grouped weights Wg
-        if mode == 'atomic':
-            unique_keys = sorted(set(elems))
-            Wg = np.zeros((len(unique_keys), N_k, N_e))
-            for i, key in enumerate(unique_keys):
-                for idx, a in enumerate(elems):
-                    if a == key:
-                        Wg[i] += W_grids[idx]
-        elif mode == 'orbital':
-            unique_keys = sorted(set(orbs))
-            Wg = np.zeros((len(unique_keys), N_k, N_e))
-            for i, key in enumerate(unique_keys):
-                for idx, o in enumerate(orbs):
-                    if o == key:
-                        Wg[i] += W_grids[idx]
-        elif mode == 'element_orbital':
-            unique_keys = sorted(set(ch_labels))
-            Wg = np.zeros((len(unique_keys), N_k, N_e))
-            for i, key in enumerate(unique_keys):
-                for idx, lab in enumerate(ch_labels):
-                    if lab == key:
-                        Wg[i] += W_grids[idx]
-        else:  # 'most'
-            unique_keys = sorted(set(ch_labels))
-            Wg = np.zeros((len(unique_keys), N_k, N_e))
-            for i, key in enumerate(unique_keys):
-                for idx, lab in enumerate(ch_labels):
-                    if lab == key:
-                        Wg[i] += W_grids[idx]
-        # Determine dominant channel and weight
-        idx_max = np.argmax(Wg, axis=0)  # shape (N_k, N_e)
-        val_max = np.max(Wg, axis=0)
-        # Flatten
-        X_flat = np.repeat(x_dist, N_e)
-        E_flat = E_grid.flatten()
-        idx_flat = idx_max.flatten()
-        val_flat = val_max.flatten()
-        # Threshold
-        global_max = np.nanmax(val_flat)
-        thr = weight_threshold * global_max
-        mask = val_flat > thr
-        X_plot = X_flat[mask]
-        E_plot = E_flat[mask]
-        idx_plot = idx_flat[mask]
-        val_plot = val_flat[mask]
-        # Colors/sizes
-        cmap = cm.get_cmap(cmap_name, len(unique_keys))
-        colors = [cmap(i) for i in idx_plot]
-        sizes = s_min + (s_max - s_min) * (val_plot / global_max if global_max>0 else 0)
-        # Setup figure
-        if plot_total_dos:
-            if dpi is not None:
-                fig, (ax1, ax2) = plt.subplots(1,2, gridspec_kw={'width_ratios':[3,1]}, figsize=(10,6), dpi=dpi, sharey=True)
-            else:
-                fig, (ax1, ax2) = plt.subplots(1,2, gridspec_kw={'width_ratios':[3,1]}, figsize=(10,6), sharey=True)
-        else:
-            if dpi is not None:
-                fig, ax1 = plt.subplots(1,1,figsize=(8,6), dpi=dpi)
-            else:
-                fig, ax1 = plt.subplots(1,1,figsize=(8,6))
-            ax2 = None
-        # Scatter
-        ax1.scatter(X_plot, E_plot, s=sizes, c=colors, edgecolor='k', lw=0.3, alpha=0.8, zorder=1)
-        # Overlay band lines (split segments)
-        for band in band_energies:
-            for (s,e) in seg_ranges:
-                if e > s:
-                    y = band[s:e+1]
-                    x = x_dist[s:e+1]
-                    if shift_fermi and fermi_level is not None:
-                        y = y - fermi_level
-                    ax1.plot(x, y, color='gray', lw=0.5, zorder=0)
-                else:
-                    x = x_dist[s:s+1]
-                    y = band[s:s+1]
-                    if shift_fermi and fermi_level is not None:
-                        y = y - fermi_level
-                    ax1.plot(x, y, 'o', color='gray', markersize=2, zorder=0)
-        ax1.set_xticks(tick_positions)
-        ax1.set_xticklabels(tick_labels)
-        ax1.set_xlabel('K-point Path')
-        ax1.set_ylabel('Energy (eV)')
-        if y_range:
-            ax1.set_ylim(y_range)
-        title_mode = mode.capitalize() if mode!='most' else 'Most'
-        ax1.set_title(f'Fatbands ({title_mode})')
-        # Legend
-        for i, key in enumerate(unique_keys):
-            ax1.scatter([], [], c=[cmap(i)], label=key, edgecolor='k', lw=0.3)
-        ax1.legend(fontsize='small', ncol=2, loc='best')
-        ax1.grid(True, ls='--', alpha=0.3)
-        # Total DOS panel
-        if plot_total_dos:
-            ax2.plot(DOS, E_dos, 'k-', lw=1)
-            ax2.set_xlabel('DOS')
-            if y_range:
-                ax2.set_ylim(y_range)
-            ax2.axvline(0, color='gray', ls='--', lw=0.8)
-            ax2.grid(True, ls='--', alpha=0.3)
-        plt.tight_layout()
-        if savefig:
-            if not os.path.exists(save_dir):
-                os.makedirs(save_dir)
-            out = os.path.join(save_dir, os.path.basename(savefig))
-            plt.savefig(out, dpi=dpi or plt.rcParams['figure.dpi'])
-            print(f"Saved figure to {out}")
-
-        plt.show()
-
-
-    elif mode in line_modes or mode == 'layer':
-
-        if mode == 'layer':
-
-            atom_name_fn = lambda x: x
-
-        else:
-
-            atom_name_fn = strip_number
-
-        elems = [a for (a, _) in labels]  # 'W1', 'S2', ...
-        orbs = [o for (_, o) in labels]
-        ch_labels = [f"{a}-{o}" for (a, o) in labels]
-
-        
-
-        if mode == 'layer':
-            # 1. Unique atom names from labels (now like 'W1', 'Mo2', 'S3' ...)
-            atom_names = sorted(set(a for (a, _) in labels))
-
-            # 2. Use provided assignment, raise if not provided or incomplete
-            if layer_assignment is None:
-                raise ValueError("You must provide layer_assignment as a dict when using mode='layer'.")
-
-            # 3. Validate all atoms are in assignment
-            for atom in atom_names:
-                if atom not in layer_assignment:
-                    raise ValueError(f"layer_assignment is missing entry for atom '{atom}'. "
-                                     f"Please supply all atoms: {atom_names}")
-
-            # 4. Sum weights by layer
-            W_top = np.zeros((N_k, N_e))
-            W_bottom = np.zeros((N_k, N_e))
-            for i, (a, o) in enumerate(labels):
-                if layer_assignment[a] == 'top':
-                    W_top += W_grids[i]
-                elif layer_assignment[a] == 'bottom':
-                    W_bottom += W_grids[i]
-                else:
-                    raise ValueError(
-                        f"layer_assignment for atom '{a}' must be 'top' or 'bottom', not '{layer_assignment[a]}'.")
-
-            W_sum = W_top + W_bottom
-            W_sum[W_sum <= 0] = np.nan
-            frac = W_top / W_sum  # 1 = all top, 0 = all bottom
-            colorbar_label = 'Fraction of Top Layer (0=Bottom, 1=Top)'
-
-        elif mode in line_modes:
-
-            if dual:
-
-                if isinstance(highlight_channel, str):
-
-                    groups = [g.strip() for g in highlight_channel.split(',')]
-
-                elif isinstance(highlight_channel, (list, tuple)):
-
-                    groups = list(highlight_channel)
-
-                else:
-
-                    raise ValueError(
-
-                        "For dual=True, highlight_channel must be 'g1,g2' or a two-element list/tuple"
-
-                    )
-
-                if len(groups) != 2:
-                    raise ValueError(f"dual mode needs exactly two groups, got {groups!r}")
-
-                key1, key2 = groups
-
-                if mode == 'o_atomic':
-
-                    valid = sorted(set([a for (a, _) in labels]))
-
-
-
-                elif mode == 'o_orbital':
-
-                    valid = sorted(set(orbs))
-
-                else:
-
-                    valid = sorted(set(ch_labels))
-
-                if key1 not in valid or key2 not in valid:
-                    raise ValueError(f"dual keys {groups!r} must be among {valid}")
-
-                W1 = np.zeros((N_k, N_e))
-
-                W2 = np.zeros((N_k, N_e))
-
-                if mode == 'o_atomic':
-                    for i, (a, _) in enumerate(labels):
-                        if a == key1:
-                            W1 += W_grids[i]
-                        elif a == key2:
-                            W2 += W_grids[i]
-
-                elif mode == 'o_orbital':
-
-                    for i, o in enumerate(orbs):
-
-                        if o == key1:
-                            W1 += W_grids[i]
-
-                        elif o == key2:
-                            W2 += W_grids[i]
-
-                else:
-
-                    for i, lab in enumerate(ch_labels):
-
-                        if lab == key1:
-                            W1 += W_grids[i]
-
-                        elif lab == key2:
-                            W2 += W_grids[i]
-
-                W12 = W1 + W2
-
-                W12_safe = W12.copy()
-
-                W12_safe[W12_safe <= 0] = np.nan
-
-                frac = W2 / W12_safe
-
-                colorbar_label = f'Fraction of {key2}   (0={key1}, 1={key2})'
-
-            else:
-
-                if mode == 'o_atomic':
-
-                    if highlight_channel is None:
-                        raise ValueError("highlight_channel must be provided for o_atomic mode")
-
-                    unique_atoms = sorted(set(elems))
-
-                    if highlight_channel not in unique_atoms:
-                        raise ValueError(f"highlight_channel '{highlight_channel}' not in atomic keys {unique_atoms}")
-
-                    Wtot = np.zeros((N_k, N_e));
-                    Whigh = np.zeros((N_k, N_e))
-
-                    for idx, a in enumerate(elems):
-
-                        Wtot += W_grids[idx]
-
-                        if a == highlight_channel:
-                            Whigh += W_grids[idx]
-
-                elif mode == 'o_orbital':
-
-                    if highlight_channel is None:
-                        raise ValueError("highlight_channel must be provided for o_orbital mode")
-
-                    unique_orbs = sorted(set(orbs))
-
-                    if highlight_channel not in unique_orbs:
-                        raise ValueError(f"highlight_channel '{highlight_channel}' not in orbital keys {unique_orbs}")
-
-                    Wtot = np.zeros((N_k, N_e));
-                    Whigh = np.zeros((N_k, N_e))
-
-                    for idx, o in enumerate(orbs):
-
-                        Wtot += W_grids[idx]
-
-                        if o == highlight_channel:
-                            Whigh += W_grids[idx]
-
-                elif mode == 'o_element_orbital':
-
-                    if highlight_channel is None:
-                        raise ValueError("highlight_channel must be provided for o_element_orbital mode")
-
-                    unique_eo = sorted(set(ch_labels))
-
-                    if highlight_channel not in unique_eo:
-                        raise ValueError(
-                            f"highlight_channel '{highlight_channel}' not in element-orbital keys {unique_eo}")
-
-                    Wtot = np.zeros((N_k, N_e));
-                    Whigh = np.zeros((N_k, N_e))
-
-                    for idx, lab in enumerate(ch_labels):
-
-                        Wtot += W_grids[idx]
-
-                        if lab == highlight_channel:
-                            Whigh += W_grids[idx]
-
-                else:  # normal
-
-                    Wtot = np.ones((N_k, N_e))
-
-                    Whigh = np.zeros((N_k, N_e))
-
-                Wtot_safe = Wtot.copy()
-
-                Wtot_safe[Wtot_safe <= 0] = np.nan
-
-                frac = Whigh / Wtot_safe
-
-                colorbar_label = f'Fraction of {highlight_channel}'
-
-        # ------ PLOTTING PART (shared for all line/layer modes) ------
-
-        cmap = plt.get_cmap(cmap_name)
-
-        norm = plt.Normalize(0.0, 1.0)
-
-        nbands = band_energies.shape[0]
-
-        if plot_total_dos:
-
-            if dpi is not None:
-
-                fig, (ax1, ax2) = plt.subplots(1, 2, gridspec_kw={'width_ratios': [3, 1]},
-
-                                               figsize=(10, 6), dpi=dpi, sharey=True)
-
-            else:
-
-                fig, (ax1, ax2) = plt.subplots(1, 2, gridspec_kw={'width_ratios': [3, 1]},
-
-                                               figsize=(10, 6), sharey=True)
-
-        else:
-
-            if dpi is not None:
-
-                fig, ax1 = plt.subplots(1, 1, figsize=(8, 6), dpi=dpi)
-
-            else:
-
-                fig, ax1 = plt.subplots(1, 1, figsize=(8, 6))
-
-            ax2 = None
-
-        for b in range(nbands):
-
-            y_line = band_energies[b].copy()
-
-            if shift_fermi and fermi_level is not None:
-                y_line = y_line - fermi_level
-
-            x_line = x_dist
-
-            for (s, e) in seg_ranges:
-
-                if e <= s:
-                    continue
-
-                xs = x_line[s:e + 1];
-                ys = y_line[s:e + 1]
-
-                points = np.array([xs, ys]).T.reshape(-1, 1, 2)
-
-                segments = np.concatenate([points[:-1], points[1:]], axis=1)
-
-                frac_vals = []
-
-                for i_k in range(s, e + 1):
-
-                    Eb = band_energies[b, i_k]
-
-                    Eb0 = Eb - fermi_level if (shift_fermi and fermi_level is not None) else Eb
-
-                    row = E_grid[i_k, :]
-
-                    j = np.argmin(np.abs(row - Eb0))
-
-                    fv = frac[i_k, j]
-
-                    if np.isnan(fv): fv = 0.0
-
-                    frac_vals.append(fv)
-
-                frac_seg = 0.5 * (np.array(frac_vals[:-1]) + np.array(frac_vals[1:]))
-
-                lc = mcoll.LineCollection(segments, array=frac_seg, cmap=cmap,
-
-                                          norm=norm, linewidth=2, zorder=1)
-
-                ax1.add_collection(lc)
-
-        ax1.set_xticks(tick_positions)
-
-        ax1.set_xticklabels(tick_labels)
-
-        ax1.set_xlabel('K-point Path')
-        
-        ylabel = 'E - E_F (eV)' if (shift_fermi and fermi_level is not None) else 'Energy (eV)'
-        ax1.set_ylabel(ylabel)
-
-        if y_range:
-            ax1.set_ylim(y_range)
-
-        if mode == 'layer':
-
-            ax1.set_title('Fatbands (Layer)')
-
-        else:
-
-            title_mode = mode if mode != 'normal' else f"Highlight {highlight_channel}"
-
-            ax1.set_title(f'Fatbands ({title_mode})')
-
-        sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
-
-        sm.set_array([])
-
-        cbar = plt.colorbar(sm, ax=ax1, pad=0.02)
-
-        cbar.set_label(colorbar_label)
-
-        if overlay_bands_in_heat:
-
-            for band in band_energies:
-
-                for (s, e) in seg_ranges:
-
-                    if e > s:
-
-                        y = band[s:e + 1];
-                        x = x_dist[s:e + 1]
-
-                        if shift_fermi and fermi_level is not None:
-                            y = y - fermi_level
-
-                        ax1.plot(x, y, color='lightgray', lw=0.5, zorder=0)
-
-                    else:
-
-                        x = x_dist[s];
-                        y = band[s]
-
-                        if shift_fermi and fermi_level is not None:
-                            y = y - fermi_level
-
-                        ax1.plot(x, y, color='lightgray', lw=0.5, zorder=0)
-
-        ax1.grid(True, ls='--', alpha=0.3)
-
-        plt.tight_layout()
-        if savefig:
-            if not os.path.exists(save_dir):
-                os.makedirs(save_dir)
-            out = os.path.join(save_dir, os.path.basename(savefig))
-            plt.savefig(out, dpi=dpi or plt.rcParams['figure.dpi'])
-            print(f"Saved figure to {out}")
-
-        plt.show()
     elif mode in heat_modes:
         # Heatmap modes: show intensity (weight) as colored background along bands
-        # Modes: 'heat_total', 'heat_atomic', 'heat_orbital', 'heat_element_orbital'
         if mode == 'heat_total':
-            # sum all channels
             Wtot = np.zeros((N_k, N_e))
             for arr in W_grids:
                 Wtot += arr
@@ -2157,7 +1795,6 @@ def plot_fatbands(
         ax1.set_xticks(tick_positions)
         ax1.set_xticklabels(tick_labels)
         ax1.set_xlabel('K-point Path')
-        
         ylabel = 'E - E_F (eV)' if (shift_fermi and fermi_level is not None) else 'Energy (eV)'
         ax1.set_ylabel(ylabel)
         if y_range:
@@ -2172,16 +1809,27 @@ def plot_fatbands(
         ax1.grid(True, ls='--', alpha=0.3)
         # Total DOS panel
         if plot_total_dos:
-            if shift_fermi and fermi_level is not None:
-                E_dos_plot = E_dos
-            else:
-                E_dos_plot = E_dos
-            ax2.plot(DOS, E_dos_plot, 'k-', lw=1)
+            ax2.plot(DOS, E_dos, 'k-', lw=1)
+            ax2.fill_betweenx(E_dos, 0, DOS, alpha=0.3, color='gray')
             ax2.set_xlabel('DOS')
             if y_range:
                 ax2.set_ylim(y_range)
-            ax2.axvline(0, color='gray', ls='--', lw=0.8)
+            if x_range:
+                ax2.set_xlim(x_range)
+            else:
+                ax2.set_xlim(0, None)
+            if fermi_level is not None:
+                y0 = 0.0 if shift_fermi else fermi_level
+                ax2.axhline(y0, color='r', ls='--', lw=1.0)
             ax2.grid(True, ls='--', alpha=0.3)
+            plt.setp(ax2.get_yticklabels(), visible=False)
+
+        # --- BAND GAP ANNOTATION ---
+        if show_band_gap:
+            _be = band_energies - fermi_level if (shift_fermi and fermi_level is not None) else band_energies
+            gap_info = _find_band_gap(x_dist, _be, fermi_level, shift_fermi, scf_file=scf_file)
+            _annotate_band_gap(ax1, gap_info)
+
         plt.tight_layout()
         if savefig:
             if not os.path.exists(save_dir):
@@ -2191,13 +1839,11 @@ def plot_fatbands(
             print(f"Saved figure to {out}")
 
         plt.show()
+        return
 
     else:
         raise ValueError(f"Unknown fatbands mode: {mode}")
 
-# ==============================
-# MAIN ENTRYPOINT
-# ==============================
 
 def plot_from_file(
     plot_type='band',
@@ -2235,7 +1881,9 @@ def plot_from_file(
         savefig=None,
         spin=False,
         sub_orb=False,
-        vertical=False
+        vertical=False,
+        show_band_gap=False,
+        scf_file=None
 
 ):
     """
@@ -2349,7 +1997,9 @@ def plot_from_file(
             spin=spin,sub_orb=sub_orb,
             plot_total_dos=plot_total_dos,
             dos_file=dos_file,
-            x_range=x_range
+            x_range=x_range,
+            show_band_gap=show_band_gap,
+            scf_file=scf_file
         )
     elif pt == 'dos':
         plot_dos(dos_file, fermi_level, shift_fermi, y_range, x_range=x_range, dpi=dpi,
@@ -2402,7 +2052,9 @@ def plot_from_file(
             savefig=savefig,
             spin=spin,
             sub_orb=sub_orb,
-            x_range=x_range
+            x_range=x_range,
+            show_band_gap=show_band_gap,
+            scf_file=scf_file
         )
     else:
         raise ValueError("Use 'band','dos','pdos', or 'fatbands' for plot_type")
