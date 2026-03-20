@@ -1,0 +1,21 @@
+"""
+QEPlotter – Quantum ESPRESSO plotting toolkit.
+
+This package provides the same functionality as qep.py, split into modules:
+  - core/utils.py    : shared constants and helpers
+  - core/io.py       : file parsers (kpath, bands, fatbands)
+  - plotting/bands.py    : band structure plotting
+  - plotting/dos.py      : DOS and PDOS plotting
+  - plotting/fatbands.py : fatband plotting (bubble, line, heat modes)
+  - analysis/bandgap.py  : band gap detection
+  - analysis/bilayer.py  : bilayer stacking analysis
+  - converters/fatbands.py : projwfc output standardizer
+  - converters/soc.py     : SOC to (l, ml) basis converter
+  - api.py               : high-level plot_from_file dispatcher
+"""
+
+from qeplotter.api import plot_from_file, launch_gui
+from qeplotter.analysis.bandgap import detect_band_gap
+from qeplotter.analysis.bilayer import analyse_file
+from qeplotter.converters.fatbands import convert_consistent
+from qeplotter.converters.soc import convert_soc_proj_to_ml
