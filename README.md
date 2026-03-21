@@ -300,7 +300,7 @@ plot_from_file(
   <img src="examples/example_outputs/plot-4.png" width="600" alt="band plot">
 </p>
 <p align="center">
-  <img src="examples/example_outputs/plot-4.png" width="600" alt="plotbyside">
+  <img src="examples/example_outputs/plot-5.png" width="600" alt="plotbyside">
 </p>
 
 
