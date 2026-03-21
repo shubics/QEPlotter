@@ -210,10 +210,17 @@ def render_dashboard():
                 f_kpath = st.file_uploader("K-Path File", type=["kpath", "in", "txt"], key="u_kpath", help="K_POINTS file in crystal_b format for symmetry labels")
                 paths['kpath_file'] = save_file(f_kpath)
 
+            if pt == "dos":
+                st.markdown("##### DOS Data (Required)")
+                f_dos = st.file_uploader("Total DOS File", key="u_dos", help="File from dos.x (e.g. system.dos)")
+                paths['dos_file'] = save_file(f_dos)
+
             if pt in ["fatbands", "pdos", "band"]:
                 st.markdown("##### PDOS Projection Data")
                 if pt == "band":
                     st.caption("Required for colored band modes (atomic, orbital, most, etc.)")
+                elif pt == "pdos":
+                    st.caption("Upload all *pdos* files from projwfc.x output")
                 f_pdos = st.file_uploader("PDOS Files", accept_multiple_files=True, key="u_pdos", help="Select all outdir/*pdos* files produced by projwfc.x")
                 if f_pdos:
                     subdir = "pdos_data"
@@ -223,9 +230,10 @@ def render_dashboard():
                 else:
                     paths['fatband_dir'] = None
 
-            st.markdown("##### DOS Data")
-            f_dos = st.file_uploader("Total DOS File (Optional)", key="u_dos", help="File containing Total Density of States")
-            paths['dos_file'] = save_file(f_dos)
+            if pt != "dos":
+                st.markdown("##### DOS Data")
+                f_dos = st.file_uploader("Total DOS File (Optional)", key="u_dos", help="File containing Total Density of States")
+                paths['dos_file'] = save_file(f_dos)
             
             if pt == "overlay_band":
                 st.markdown("##### Comparison Data")
@@ -253,11 +261,16 @@ def render_dashboard():
             args['fermi_level'] = c_f1.number_input("Fermi Level (eV)", value=auto_fermi, format="%.4f", help="Absolute Fermi energy to shift plots relative to")
             args['shift_fermi'] = c_f2.checkbox("Shift E_F to 0", value=True, help="Shift energy axis so Fermi level is at 0")
 
-            if pt in ["band", "fatbands", "pdos", "dos"]:
+            if pt in ["band", "fatbands"]:
                 st.markdown("##### Calculation Properties")
                 c_prop1, c_prop2 = st.columns(2)
                 args['spin'] = c_prop1.checkbox("Spin Polarized", help="Check if calculation used nspin=2 or noncolin=true")
                 args['sub_orb'] = c_prop2.checkbox("Sub-Orbital Analysis", help="Check if you want m-resolved or SOC states")
+
+            if pt == "pdos":
+                st.markdown("##### PDOS Settings")
+                args['pdos_mode'] = st.selectbox("PDOS Grouping Mode", ["atomic", "orbital", "element_orbital"],
+                    help="How to group projected orbitals: by atom element, orbital type, or element-orbital pair")
 
             if pt == "band":
                  bm = st.selectbox("Band Mode", ["normal", "atomic", "orbital", "element_orbital", "most"], help="Mode for coloring bands")
@@ -388,7 +401,8 @@ def render_dashboard():
                  if "heat" in fb_mode:
                      args['overlay_bands_in_heat'] = st.checkbox("Overlay Lines", True, help="Add line bands on top of heatmap")
 
-            args['plot_total_dos'] = st.checkbox("Plot Total DOS side-by-side", value=False, help="Requires DOS file uploaded")
+            if pt in ["band", "fatbands"]:
+                args['plot_total_dos'] = st.checkbox("Plot Total DOS side-by-side", value=False, help="Requires DOS file uploaded")
 
             if pt in ["band", "fatbands"]:
                 args['show_band_gap'] = st.checkbox("📏 Show Band Gap Arrow", value=False, help="Detect and annotate the band gap (VBM → CBM) on the plot")
@@ -427,8 +441,7 @@ def render_dashboard():
                  else:
                      args['x_range'] = None
 
-            if pt in ['dos', 'pdos']:
-                args['vertical'] = st.checkbox("Vertical Orientation (Energy on Y)", value=True)
+
             
             st.markdown("##### Colors & Visuals")
             args['cmap_name'] = st.selectbox("Colormap", ["tab10", "magma", "viridis", "jet", "coolwarm", "bwr"], help="Matplotlib colormap")
@@ -463,13 +476,22 @@ def render_dashboard():
             
             # Validation
             if pt == "band" and (not args.get('band_file') or not args.get('kpath_file')):
-                st.error("Missing Band or K-Path file.")
+                st.error("❌ Missing Band or K-Path file.")
                 return
             if pt == "band" and args.get('band_mode', 'normal') != 'normal' and not args.get('fatband_dir'):
-                st.error(f"Band mode '{args['band_mode']}' requires PDOS projection files. Upload them in the Data tab.")
+                st.error(f"❌ Band mode '{args['band_mode']}' requires PDOS projection files. Upload them in the Data tab.")
                 return
             if pt == "fatbands" and not args.get('fatband_dir'):
-                st.error("Fatband mode requires PDOS projection files. Upload them in the Data tab.")
+                st.error("❌ Fatband mode requires PDOS projection files. Upload them in the Data tab.")
+                return
+            if pt == "dos" and not args.get('dos_file'):
+                st.error("❌ Total DOS file is required for DOS plotting. Upload it in the Data tab.")
+                return
+            if pt == "pdos" and not args.get('pdos_dir'):
+                st.error("❌ PDOS files are required for Projected DOS plotting. Upload them in the Data tab.")
+                return
+            if pt == "overlay_band" and (not args.get('band_file') or not args.get('kpath_file') or not args.get('band_file2') or not args.get('kpath_file2')):
+                st.error("❌ Both Band files and both K-Path files are required for overlay comparison.")
                 return
 
             with st.spinner("Processing..."):
