@@ -297,8 +297,12 @@ plot_from_file(
 )
 ```
 <p align="center">
-  <img src="examples/example_outputs/plot-4.png" width="600" alt="Fatbands atomic bubble plot">
+  <img src="examples/example_outputs/plot-4.png" width="600" alt="band plot">
 </p>
+<p align="center">
+  <img src="examples/example_outputs/plot-4.png" width="600" alt="plotbyside">
+</p>
+
 
 ### 3. Fatbands: Atomic Contribution (Bubble Plot)
 
