@@ -534,27 +534,22 @@ import shutil
 def render_tools():
     st.title("🛠️ Computational Utilities")
 
-    tab1, tab2, tab3 = st.tabs(["Fatband Converter", "Gap Detector", "Bilayer Analysis"])
+    tab1, tab2, tab3, tab4 = st.tabs(["Standard Converter", "SOC Converter", "Gap Detector", "Bilayer Analysis"])
 
-    # --- 1. CONVERTER ---
+    # --- 1a. STANDARD CONVERTER ---
     with tab1:
-        st.markdown("#### `proj.out` → `.pdos` Converter")
-        st.info("Converts QE `projwfc.x` output to plotting-friendly format.")
+        st.markdown("#### Standard `proj.out` → `.pdos` Converter")
+        st.info("Converts standard non-SOC QE `projwfc.x` output to plotting-friendly format.")
 
-        f = st.file_uploader("Upload proj.out", key="t_p_uploader")
+        f_std = st.file_uploader("Upload proj.out", key="t_p_std_uploader")
 
-        if f:
-            p = save_file(f)
+        if f_std:
+            p = save_file(f_std)
             out_d = os.path.join(st.session_state.temp_dir, "converted_pdos")
 
-            col1, col2 = st.columns(2)
-
-            # STANDARD CONVERT
-            if col1.button("Convert (Standard)", key="btn_conv_std", use_container_width=True):
+            if st.button("Convert (Standard)", key="btn_conv_std", type="primary"):
                 try:
-                    # Clean previous run
                     if os.path.exists(out_d): shutil.rmtree(out_d)
-                    
                     log = StringIO()
                     with redirect_stdout(log):
                         convert_consistent(p, outdir=out_d)
@@ -564,11 +559,20 @@ def render_tools():
                 except Exception as e:
                     st.error(f"Error: {e}")
 
-            # SOC CONVERT
-            if col2.button("Convert (SOC Mode)", key="btn_conv_soc", use_container_width=True):
+    # --- 1b. SOC CONVERTER ---
+    with tab2:
+        st.markdown("#### SOC `proj.out` → `.pdos` Converter")
+        st.info("Converts Spin-Orbit Coupled (SOC) QE `projwfc.x` output to plotting-friendly format.")
+
+        f_soc = st.file_uploader("Upload soc proj.out", key="t_p_soc_uploader")
+
+        if f_soc:
+            p = save_file(f_soc)
+            out_d = os.path.join(st.session_state.temp_dir, "soc_pdos")
+
+            if st.button("Convert (SOC Mode)", key="btn_conv_soc", type="primary"):
                 try:
                     if os.path.exists(out_d): shutil.rmtree(out_d)
-                    
                     log = StringIO()
                     with redirect_stdout(log):
                         convert_soc_proj_to_ml(p, outdir=out_d)
@@ -579,7 +583,7 @@ def render_tools():
                     st.error(f"Error: {e}")
 
     # --- 2. GAP DETECTOR ---
-    with tab2:
+    with tab3:
         st.markdown("#### Band Gap Analysis")
         st.info("Detect properties like direct/indirect gap, VBM, and CBM.")
         c1, c2 = st.columns(2)
@@ -591,7 +595,7 @@ def render_tools():
             run_tool(detect_band_gap, save_file(fb), save_file(fk), fermi)
 
     # --- 3. BILAYER ---
-    with tab3:
+    with tab4:
         st.markdown("#### Structure Analyzer")
         st.info("Analyze layer separation and atomic coordinates.")
         fs = st.file_uploader("Input File (.in / .out)", key="t_s_uploader")
