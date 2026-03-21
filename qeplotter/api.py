@@ -42,7 +42,9 @@ def plot_from_file(
     savefig=None,
     spin=False,
     sub_orb=False,
-    vertical=False
+    vertical=False,
+    show_band_gap=False,
+    scf_file=None
 ):
     """
     High-level wrapper for plotting Quantum ESPRESSO band, DOS, PDOS, and fatbands in one function.
@@ -70,14 +72,16 @@ def plot_from_file(
             spin=spin, sub_orb=sub_orb,
             plot_total_dos=plot_total_dos,
             dos_file=dos_file,
-            x_range=x_range
+            x_range=x_range,
+            show_band_gap=show_band_gap,
+            scf_file=scf_file
         )
     elif pt == 'dos':
         plot_dos(
             dos_file, fermi_level, shift_fermi, y_range, x_range=x_range, dpi=dpi,
             save_dir=save_dir, savefig=savefig, vertical=vertical
         )
-    elif plot_type == 'overlay_band':
+    elif pt == 'overlay_band':
         overlay_band_plot(
             band_file, kpath_file,
             band_file2, kpath_file2,
@@ -126,7 +130,9 @@ def plot_from_file(
             savefig=savefig,
             spin=spin,
             sub_orb=sub_orb,
-            x_range=x_range
+            x_range=x_range,
+            show_band_gap=show_band_gap,
+            scf_file=scf_file
         )
     else:
         raise ValueError("Use 'band','dos','pdos', 'overlay_band', or 'fatbands' for plot_type")
