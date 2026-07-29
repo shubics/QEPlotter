@@ -119,6 +119,7 @@ QEPlotter/
 │
 ├── qep.py                  # 📄 Standalone monolithic script (all-in-one)
 ├── requirements.txt        # Python dependencies
+├── pyproject.toml          # Modern Python build configuration
 ├── setup.py                # pip install support
 └── examples/               # Sample QE outputs for testing
 ```
