@@ -1,7 +1,8 @@
 # ⚛️ QEPlotter
 > **Quantum ESPRESSO Band, DOS/PDOS, Fatband, and Analysis Toolkit**
 
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![QEPlotter 2.0](https://img.shields.io/badge/QEPlotter-2.0-7893AE.svg)](https://github.com/shubics/QEPlotter)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Streamlit Cloud](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://qepweb.streamlit.app)
 [![Streamlit](https://img.shields.io/badge/Streamlit-FF4B4B?style=flat&logo=Streamlit&logoColor=white)](https://streamlit.io)
@@ -41,6 +42,10 @@ streamlit run gui_mod.py
 - **Auto-Fermi Detection**: Automatically reads Fermi energy from `scf.out` (supports metals, insulators, and semiconductors).
 - **Band Gap Annotation**: Detects VBM/CBM and draws an arrow with the gap value directly on the plot.
 - **Smart Analysis Tools**: Built-in band gap detector, bilayer structure analyzer, and projection converters.
+- **Crystal Structure Explorer**: Browser-rendered 3D structures with symmetry, bonds, angles, bilayer recognition, and ordered six-site TMD stacking analysis.
+- **Native K-path Engine**: Built-in Bravais classification, first-Brillouin-zone construction, and QE-ready paths without SeeK-path.
+- **Irreducible K-grid Engine**: Exact integer-orbit reduction, weights, full-grid mapping, 3D IBZ inspection, and QE export from structure symmetry.
+- **Symmetry Representations**: Γ-point reducible characters, numerical irreducible decomposition, SALCs, and symmetry-allowed `s/p/d` orbital matching.
 
 ### 📦 **Python API (Two Ways to Use)**
 
@@ -62,7 +67,8 @@ plot_from_file(
 ```
 
 #### **Option 2: Standalone Script (`qep.py`)**
-If you prefer a portable, single-file approach, simply copy `qep.py` to your project directory.
+If you only need the legacy plotting and converter API in a portable,
+single-file form, copy `qep.py` to your project directory.
 ```python
 import qep
 
@@ -76,8 +82,10 @@ qep.plot_from_file(
 )
 ```
 
-> **Note:** All code examples below use `from qeplotter import plot_from_file`.  
-> For the standalone script, simply replace with `import qep` and call `qep.plot_from_file(...)`.
+> **Note:** All examples below use the maintained modular package. The
+> standalone script retains the plotting API, but the Structure Explorer,
+> native K-path/K-grid engines, symmetry representations, and full v2 web
+> interface are available only through `qeplotter` and `gui_mod.py`.
 
 ---
 
@@ -101,6 +109,10 @@ QEPlotter/
 │   ├── analysis/
 │   │   ├── bandgap.py      #     Band gap detection + plot annotation
 │   │   └── bilayer.py      #     Structure analysis (stacking, interlayer distance)
+│   ├── structure/           #     Multi-format structures, symmetry, bonds, browser 3D
+│   ├── kpath/               #     Native K-path recipes + Wigner–Seitz BZ geometry
+│   ├── kmesh/               #     Native uniform-grid → irreducible-BZ reducer
+│   ├── symmetry/            #     Γ representations, character decomposition + SALCs
 │   └── converters/
 │       ├── fatbands.py     #     proj.out → pdos converter (consistent grid)
 │       └── soc.py          #     SOC (j,mj) → (l,ml) basis converter
@@ -152,6 +164,57 @@ Useful for **Van der Waals heterostructures**.
 
 ### 4. Advanced Analysis Tools
 
+#### 🧭 Native K-path & Brillouin Zone
+The modular GUI recommends band paths without a SeeK-path dependency. `spglib`
+extracts the primitive cell and ASE supplies only the unimodular mapping to the
+AFLOW canonical primitive basis. QEPlotter's internal Setyawan–Curtarolo registry
+contains the named paths, extended Bravais cases, and lattice-dependent parameters
+for all 14 three-dimensional Bravais lattices. The separate geometry engine builds
+the first Brillouin zone as a reciprocal-lattice Wigner–Seitz cell using a Voronoi
+construction; BZ vertices are never treated as band-path points. Both compact
+`K_POINTS crystal_b` and explicit `K_POINTS crystal` cards can be downloaded.
+Users can choose the full recommendation, its primary continuous branch, or
+compose a custom route such as `Γ-X-M-Γ | R-X`; all exports and the 3D path update
+to match the selected alternative.
+
+#### Irreducible K-grid
+The separate **K-grid & IBZ** page reduces uniform SCF/NSCF meshes to
+irreducible Brillouin-zone representatives with multiplicities, normalized
+weights, complete orbit mapping, and QE-ready output. spglib supplies only the
+crystal's spatial symmetry operations; QEPlotter performs the shifted-grid
+compatibility checks and exact integer-address orbit reduction itself.
+
+See [Irreducible k-grid engine](docs/irreducible-k-grid.md) for the algorithm,
+coordinate convention, magnetic/time-reversal considerations, and validation
+invariants.
+
+#### Symmetry & Orbital Representations
+The dedicated representations page standardises an uploaded structure to its
+primitive cell, identifies complete Wyckoff/site-symmetry orbits, and constructs
+the transformation matrices for `s`, `p`, `d`, or atomic-displacement bases at
+Γ. QEPlotter derives the finite point-group irreducible characters numerically,
+so every detected symmetry class is included. It then decomposes the selected
+reducible representation, generates normalised symmetry-adapted linear
+combinations (SALCs), and lists `s/p/d` targets that share an irrep and are
+therefore allowed to interact by symmetry. The result is structure-derived;
+assigning irreps to individual electronic bands additionally requires QE
+wavefunctions and is intentionally reported as a separate future capability.
+
+Example: for the four H `1s` orbitals in the tetrahedral CH₄ validation
+structure, the complete 24-operation `T_d` analysis gives:
+
+\[
+\Gamma_{\mathrm{H\,1s}}=A_1\oplus T_2 .
+\]
+
+The automated suite also covers diamond Si, rocksalt NaCl, hcp Mg,
+wurtzite ZnO, 2H monolayer MoS₂, and the finite-group engine for all 32
+crystallographic point groups.
+
+See [Symmetry and Orbital Representations](docs/symmetry-representations.md)
+for the equations, basis conventions, SALC construction, validation table, and
+scientific limits.
+
 #### 🔍 Band Gap Detector
 Two detection methods with automatic fallback:
 
@@ -165,8 +228,11 @@ Detection output:
 
 #### 🧱 Structure Analyzer (`analyse_file`)
 Parses `scf.in` or `scf.out` to determine 2D material properties:
-*   **Stacking Order**: Heuristic detection of AA, AB, or AA' stacking in bilayers.
+*   **Stacking Order**: Safe detection of R-type AA/AB/BA and H-type AA′/AB′/A′B registries for commensurate trigonal-prismatic bilayers. Janus/heterobilayer interfaces remain explicit; unsupported or twisted structures are reported as `General registry`.
 *   **Interlayer Distance**: Calculates the vertical ($\Delta z$) distance between defined layers.
+
+Method, naming convention, applicability, and references:
+[Bilayer stacking analysis](docs/stacking-analysis.md).
 
 #### 🔄 Consistency Converters
 Quantum ESPRESSO's `projwfc.x` has known quirks.

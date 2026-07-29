@@ -123,6 +123,9 @@ saved/
 pdos_data/
 fatband_data/
 
+# Local release bundles belong in GitHub Releases, not source history
+QEPlotter-v*.zip
+
 # User provided tail (cleaned)
 # marimo stuff if needed
 marimo/_static/

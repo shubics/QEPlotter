@@ -164,7 +164,9 @@ def get_available_channels(pdos_dir):
 def main():
     with st.sidebar:
         st.title("⚛️ QEPlotter")
-        st.caption("Full-Feature Interface v3.3 (Pro)")
+        from qeplotter.version import __version__
+
+        st.caption(f"Full-Feature Interface v{__version__}")
         mode = st.radio("Navigation", ["📊 Visualization Dashboard", "🛠 Tools & Utilities"])
 
     if mode == "📊 Visualization Dashboard":

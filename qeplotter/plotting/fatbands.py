@@ -10,6 +10,7 @@ import numpy as np
 
 from qeplotter.core.io import read_band_xdistances, read_fatband_files
 from qeplotter.core.utils import strip_number
+from qeplotter.analysis.bandgap import _find_band_gap, _annotate_band_gap
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SCRIPT_DIR = os.path.dirname(os.path.dirname(SCRIPT_DIR))
@@ -39,7 +40,9 @@ def plot_fatbands(
         savefig=None,
         spin=False,
         sub_orb=False,
-        x_range=None
+        x_range=None,
+        show_band_gap=False,
+        scf_file=None
 ):
     """
       Plot fatbands from Quantum ESPRESSO data.
@@ -237,6 +240,13 @@ def plot_fatbands(
                 ax2.set_xlim(x_range)
             ax2.axvline(0, color='gray', ls='--', lw=0.8)
             ax2.grid(True, ls='--', alpha=0.3)
+
+        # --- BAND GAP ANNOTATION ---
+        if show_band_gap:
+            _be = band_energies - fermi_level if (shift_fermi and fermi_level is not None) else band_energies
+            gap_info = _find_band_gap(x_dist, _be, fermi_level, shift_fermi, scf_file=scf_file)
+            _annotate_band_gap(ax1, gap_info)
+
         plt.tight_layout()
         if savefig:
             if not os.path.exists(save_dir):
@@ -612,6 +622,12 @@ def plot_fatbands(
             ax2.axvline(0, color='gray', ls='--', lw=0.8)
             ax2.grid(True, ls='--', alpha=0.3)
 
+        # --- BAND GAP ANNOTATION ---
+        if show_band_gap:
+            _be = band_energies - fermi_level if (shift_fermi and fermi_level is not None) else band_energies
+            gap_info = _find_band_gap(x_dist, _be, fermi_level, shift_fermi, scf_file=scf_file)
+            _annotate_band_gap(ax1, gap_info)
+
         plt.tight_layout()
         if savefig:
             if not os.path.exists(save_dir):
@@ -742,6 +758,13 @@ def plot_fatbands(
                 ax2.set_xlim(x_range)
             ax2.axvline(0, color='gray', ls='--', lw=0.8)
             ax2.grid(True, ls='--', alpha=0.3)
+
+        # --- BAND GAP ANNOTATION ---
+        if show_band_gap:
+            _be = band_energies - fermi_level if (shift_fermi and fermi_level is not None) else band_energies
+            gap_info = _find_band_gap(x_dist, _be, fermi_level, shift_fermi, scf_file=scf_file)
+            _annotate_band_gap(ax1, gap_info)
+
         plt.tight_layout()
         if savefig:
             if not os.path.exists(save_dir):

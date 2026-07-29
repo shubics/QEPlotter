@@ -16,6 +16,12 @@ This package provides the same functionality as qep.py, split into modules:
 
 from qeplotter.api import plot_from_file, launch_gui
 from qeplotter.analysis.bandgap import detect_band_gap
-from qeplotter.analysis.bilayer import analyse_file
+from qeplotter.analysis.bilayer import (
+    analyse_file,
+    analyse_stacking,
+    classify_stacking,
+    detect_bilayer,
+)
 from qeplotter.converters.fatbands import convert_consistent
 from qeplotter.converters.soc import convert_soc_proj_to_ml
+from qeplotter.version import __version__

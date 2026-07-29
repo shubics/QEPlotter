@@ -2425,8 +2425,17 @@ def custom_labeling(species: List[str]) -> List[str]:
     return labels
 
 def classify_stacking(cell: np.ndarray, species: List[str], frac: np.ndarray) -> str:
+    # Keep the portable script aligned with the maintained package whenever
+    # both are present. The compact fallback below still recognises all six
+    # ordered high-symmetry labels and never invents AA for an unknown shift.
+    try:
+        from qeplotter.analysis.bilayer import classify_stacking as _modular_classifier
+        return _modular_classifier(cell, species, frac)
+    except ImportError:
+        pass
     if len(frac)==0: return "NO_ATOMS"
-    metal = min(Counter(species), key=species.count)
+    elements = [strip_number(label) for label in species]
+    metal = min(Counter(elements), key=elements.count)
     lower, upper = split_layers(frac)
     cart = cart_from_frac(cell, frac)
     pairs=set()
@@ -2434,25 +2443,20 @@ def classify_stacking(cell: np.ndarray, species: List[str], frac: np.ndarray) ->
         for j in lower:
             d = cart[i]-cart[j]; d[2]=0
             if np.linalg.norm(d)<PLANAR_TOL:
-                pairs.add((species[i]==metal, species[j]==metal))
+                pairs.add((elements[i]==metal, elements[j]==metal))
     mm = any(pi and pj for pi,pj in pairs)
     xx = any((not pi) and (not pj) for pi,pj in pairs)
     mx = any(pi and (not pj) for pi,pj in pairs)
     xm = any((not pi) and pj for pi,pj in pairs)
-    if mx and xm: return 'AA′'
-    if xx and not(mm or mx or xm): return 'A′B'
-    if xm and not(mm or mx or xx): return 'AB'
-    if mm and not(xx or mx or xm): return 'AB′'
-    disp=[]
-    for i in upper:
-        if species[i]!=metal: continue
-        dv = frac[lower,:2]-frac[i,:2]; dv -= np.round(dv)
-        disp.append(dv[np.argmin(np.linalg.norm(dv,axis=1))])
-    if not disp: return 'AA'
-    Δ = np.mod(np.mean(disp,axis=0),1)
-    CANON={"AA":np.array([0,0]),"AB":np.array([1/3,2/3]),"AB′":np.array([2/3,1/3])}
-    name,dist=min(((k,np.linalg.norm(Δ-v)) for k,v in CANON.items()), key=lambda x:x[1])
-    return name if dist<SHIFT_TOL else "AA"
+    patterns = {
+        (True, True, False, False): "AA",
+        (False, False, False, True): "AB",
+        (False, False, True, False): "BA",
+        (False, False, True, True): "AA′",
+        (True, False, False, False): "AB′",
+        (False, True, False, False): "A′B",
+    }
+    return patterns.get((mm, xx, mx, xm), "General registry")
 
 
 def analyse_file(path: Union[str, Path]):

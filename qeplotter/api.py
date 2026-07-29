@@ -138,25 +138,25 @@ def plot_from_file(
         raise ValueError("Use 'band','dos','pdos', 'overlay_band', or 'fatbands' for plot_type")
 
 def launch_gui():
-    """
-    Launches the QUI-Web Streamlit application.
-    Assumes `qui_app.py` is in the same directory as this module.
-    """
+    """Launch the recommended modular Streamlit application."""
+    import importlib.util
     import subprocess
-    import os
-    
-    # Get directory of this file
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    app_path = os.path.join(base_dir, "qui_app.py")
-    
-    if not os.path.exists(app_path):
-        print(f"Error: Could not find `qui_app.py` at {app_path}")
-        return
+    import sys
+    from pathlib import Path
 
-    print(f"Launching QUI-Web from {app_path}...")
+    app_spec = importlib.util.find_spec("gui_mod")
+    if app_spec is None or app_spec.origin is None:
+        raise FileNotFoundError(
+            "Could not find the installed QEPlotter GUI module `gui_mod`."
+        )
+    app_path = Path(app_spec.origin)
+
+    print(f"Launching QEPlotter from {app_path}...")
     try:
-        # Run streamlit command
-        subprocess.run(["streamlit", "run", app_path], check=True)
+        subprocess.run(
+            [sys.executable, "-m", "streamlit", "run", str(app_path)],
+            check=True,
+        )
     except Exception as e:
         print(f"Failed to launch GUI: {e}")
-        print("Try running manually: streamlit run qui_app.py")
+        print(f"Try running manually: streamlit run {app_path}")

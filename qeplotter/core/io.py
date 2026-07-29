@@ -43,9 +43,9 @@ def parse_kpath_file(kpath_file):
           0.0000  0.0000  0.0  20  ! G
     Output will be:
         counts = [20, 30, 40]
-        labels = ['G', 'M', 'K']
+        labels = ['G', 'M', 'K', 'G']
     """
-    counts, labels = [], []
+    entries = []
     with open(kpath_file, 'r') as f:
         lines = f.readlines()
     start = None
@@ -55,11 +55,11 @@ def parse_kpath_file(kpath_file):
             break
     if start is None or start >= len(lines):
         raise ValueError(f"K_POINTS header not found or invalid in {kpath_file}")
-    n_lines = len(lines[start:])
-    for idx, line in enumerate(lines[start:]):
-
-        if idx == n_lines - 1:
-            continue
+    try:
+        declared = int(lines[start - 1].split()[0])
+    except (ValueError, IndexError):
+        declared = None
+    for line in lines[start:]:
         txt = line.strip()
         if not txt or txt.startswith('#'):
             continue
@@ -70,8 +70,15 @@ def parse_kpath_file(kpath_file):
         except Exception:
             cnt = 1
         lbl = parts[1].strip() if len(parts) > 1 else ''
-        counts.append(cnt)
-        labels.append(lbl)
+        entries.append((cnt, lbl))
+        if declared is not None and len(entries) >= declared:
+            break
+    if len(entries) < 2:
+        raise ValueError(f"crystal_b path needs at least two vertices in {kpath_file}")
+    # In QE crystal_b the last vertex has no outgoing segment. Preserve its
+    # label for the final plot tick, but ignore its interpolation count.
+    counts = [count for count, _label in entries[:-1]]
+    labels = [label for _count, label in entries]
     return counts, labels
 
 
@@ -153,12 +160,12 @@ def read_band_xdistances(band_file, kpath_file):
         else:
             print(f"Warning: sum(counts)={cum[-1]} != N_k={N_k}. Tick positions may be misaligned.")
 
-    tick_positions = []
-    tick_labels = []
-    for idx, lbl in zip(cum, labels + [""]):
-        if idx >= N_k:
+    tick_positions, tick_labels = [], []
+    for idx, lbl in zip(cum, labels):
+        if idx > N_k:
             break
-        tick_positions.append(x_dist[idx])
+        point_index = N_k - 1 if idx == N_k else idx
+        tick_positions.append(x_dist[point_index])
         tick_labels.append(lbl)
 
     # segment boundaries

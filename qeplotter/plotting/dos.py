@@ -141,9 +141,6 @@ def plot_pdos_dir(pdos_dir, fermi_level=None,
     if fermi_level is not None:
         x0 = 0.0 if shift_fermi else fermi_level
         plt.axvline(x0, color='r', ls='--', lw=1.2, label=f'Fermi = {fermi_level:.2f} eV')
-    if fermi_level is not None:
-        x0 = 0.0 if shift_fermi else fermi_level
-        plt.axvline(x0, color='r', ls='--', lw=1.2, label=f'Fermi = {fermi_level:.2f} eV')
     
     xlabel = 'E - E_F (eV)' if (shift_fermi and fermi_level is not None) else 'Energy (eV)'
     plt.xlabel(xlabel)

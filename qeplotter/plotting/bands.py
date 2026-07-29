@@ -9,6 +9,7 @@ import numpy as np
 
 from qeplotter.core.io import read_band_xdistances, read_fatband_files
 from qeplotter.core.utils import strip_number
+from qeplotter.analysis.bandgap import _find_band_gap, _annotate_band_gap
 
 
 def overlay_band_plot(
@@ -89,7 +90,9 @@ def plot_band(
     sub_orb=False,
     plot_total_dos=False,
     dos_file=None,
-    x_range=None
+    x_range=None,
+    show_band_gap=False,
+    scf_file=None
 ):
     """
     Plot the electronic band structure from Quantum ESPRESSO.
@@ -266,6 +269,11 @@ def plot_band(
         
         if fermi_level is not None:
              ax2.legend(fontsize='small', loc='upper right')
+
+    # --- BAND GAP ANNOTATION ---
+    if show_band_gap:
+        gap_info = _find_band_gap(x_dist, band_energies, fermi_level, shift_fermi, scf_file=scf_file)
+        _annotate_band_gap(ax1, gap_info)
 
     plt.tight_layout()
     if savefig:

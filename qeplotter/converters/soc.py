@@ -10,14 +10,32 @@ from typing import Dict, List, Tuple, IO, Generator, Union
 _CG_CACHE: Dict[Tuple[int, float, float, int], float] = {}
 
 def _cg_prob(l: int, j: float, mj: float, ml: int) -> float:
-    from sympy.physics.wigner import clebsch_gordan as _CG
-    from sympy import Rational as _R
+    """Squared Clebsch–Gordan coefficient for ``l ⊗ 1/2``.
 
+    The closed-form coupling to spin one-half avoids a heavyweight symbolic
+    dependency and is exact for the two allowed branches j=l±1/2.
+    """
+    if l < 0:
+        raise ValueError("l must be non-negative")
+    upper = abs(j - (l + 0.5)) < 1e-8
+    lower = l > 0 and abs(j - (l - 0.5)) < 1e-8
+    if not (upper or lower):
+        raise ValueError(f"Invalid angular momentum coupling: l={l}, j={j}")
     prob = 0.0
     for m_s in (-0.5, +0.5):
         if abs(ml - (mj - m_s)) < 1e-8:
-            prob += float(_CG(l, _R(1, 2), j, ml, m_s, mj) ** 2)
-    return prob
+            if upper:
+                numerator = (
+                    l + mj + 0.5 if m_s > 0
+                    else l - mj + 0.5
+                )
+            else:
+                numerator = (
+                    l - mj + 0.5 if m_s > 0
+                    else l + mj + 0.5
+                )
+            prob += numerator / (2*l + 1)
+    return float(max(0.0, min(1.0, prob)))
 
 def _cg_cached(l: int, j: float, mj: float, ml: int) -> float:
     key = (l, j, mj, ml)
