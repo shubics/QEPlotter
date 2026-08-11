@@ -46,6 +46,15 @@ def plot_from_file(
     show_band_gap=False,
     scf_file=None,
     data_note=None,
+    figsize=None,
+    plot_title=None,
+    x_label=None,
+    y_label=None,
+    show_title=True,
+    show_grid=True,
+    show_legend=True,
+    legend_location='best',
+    legend_title=None,
 ):
     """
     High-level wrapper for plotting Quantum ESPRESSO band, DOS, PDOS, and fatbands in one function.
@@ -57,6 +66,17 @@ def plot_from_file(
     (See individual plot functions for full parameter documentation.)
     """
     pt = plot_type.lower()
+    common_style = {
+        'figsize': figsize,
+        'plot_title': plot_title,
+        'x_label': x_label,
+        'y_label': y_label,
+        'show_title': show_title,
+        'show_grid': show_grid,
+        'show_legend': show_legend,
+        'legend_location': legend_location,
+        'legend_title': legend_title,
+    }
     if pt == 'band':
         plot_band(
             band_file=band_file,
@@ -76,11 +96,13 @@ def plot_from_file(
             x_range=x_range,
             show_band_gap=show_band_gap,
             scf_file=scf_file,
+            **common_style,
         )
     elif pt == 'dos':
         plot_dos(
             dos_file, fermi_level, shift_fermi, y_range, x_range=x_range, dpi=dpi,
-            save_dir=save_dir, savefig=savefig, vertical=vertical
+            save_dir=save_dir, savefig=savefig, vertical=vertical,
+            **common_style,
         )
     elif pt == 'overlay_band':
         overlay_band_plot(
@@ -95,12 +117,14 @@ def plot_from_file(
             label1=label1,
             label2=label2,
             save_dir=save_dir,
-            savefig=savefig
+            savefig=savefig,
+            **common_style,
         )
     elif pt == 'pdos':
         plot_pdos_dir(
             pdos_dir, fermi_level, shift_fermi, y_range, dpi=dpi, pdos_mode=pdos_mode,
-            save_dir=save_dir, savefig=savefig
+            save_dir=save_dir, savefig=savefig,
+            **common_style,
         )
     elif pt == 'fatbands':
         fb_dir = fatband_dir if fatband_dir is not None else pdos_dir
@@ -135,6 +159,7 @@ def plot_from_file(
             show_band_gap=show_band_gap,
             scf_file=scf_file,
             data_note=data_note,
+            **common_style,
         )
     else:
         raise ValueError("Use 'band','dos','pdos', 'overlay_band', or 'fatbands' for plot_type")

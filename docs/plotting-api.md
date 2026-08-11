@@ -21,6 +21,24 @@ from qeplotter import plot_from_file
 | `save_dir` | `str` | `'saved'` | Output directory. |
 | `savefig` | `str` | `None` | Output filename; if omitted, the plot is displayed only. |
 
+## Figure styling
+
+The same styling options are accepted by every plot family and are also
+available in the GUI's **Plot Styling** tab. Empty custom text values preserve
+QEPlotter's automatic labels.
+
+| Parameter | Type | Default | Description |
+|:---|:---|:---|:---|
+| `figsize` | `tuple` | `None` | Figure width and height in inches; plot-specific defaults are used when omitted. |
+| `plot_title` | `str` | `None` | Custom plot title. |
+| `x_label` | `str` | `None` | Custom label for the main X axis. |
+| `y_label` | `str` | `None` | Custom label for the main Y axis. |
+| `show_title` | `bool` | `True` | Show or hide the plot title. |
+| `show_grid` | `bool` | `True` | Show or hide grid lines, including the optional DOS panel. |
+| `show_legend` | `bool` | `True` | Show categorical legends and continuous fatband colour scales. |
+| `legend_location` | `str` | `'best'` | Matplotlib placement for categorical legends. |
+| `legend_title` | `str` | `None` | Optional title for categorical legends or continuous fatband colour scales. |
+
 ## Band and fatband parameters
 
 | Parameter | Type | Default | Description |

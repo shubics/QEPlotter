@@ -295,9 +295,18 @@ def render_dashboard():
         with tab_style:
             st.markdown("##### Plot Dimensions & Limits")
             col_w, col_h = st.columns(2)
-            fig_width = col_w.number_input("Width", 12)
-            fig_height = col_h.number_input("Height", 6)
-            args['dpi'] = st.number_input("DPI", 200)
+            fig_width = col_w.number_input(
+                "Width (in)", min_value=4.0, max_value=24.0,
+                value=12.0, step=0.5,
+            )
+            fig_height = col_h.number_input(
+                "Height (in)", min_value=3.0, max_value=18.0,
+                value=6.0, step=0.5,
+            )
+            args['figsize'] = (float(fig_width), float(fig_height))
+            args['dpi'] = st.number_input(
+                "DPI", min_value=72, max_value=1200, value=200, step=25,
+            )
 
             c3, c4 = st.columns(2)
             if pt in ["pdos", "dos"]:
@@ -324,6 +333,67 @@ def render_dashboard():
                         args['x_range'] = None
                 else:
                     args['x_range'] = None
+
+            st.markdown("##### Text & Layout")
+            title_col, title_toggle_col = st.columns([3, 1])
+            args['show_title'] = title_toggle_col.checkbox(
+                "Show title", value=True,
+            )
+            custom_title = title_col.text_input(
+                "Plot title",
+                placeholder="Leave blank to use the automatic title",
+                disabled=not args['show_title'],
+            )
+            args['plot_title'] = custom_title.strip() or None
+
+            label_x_col, label_y_col = st.columns(2)
+            custom_x_label = label_x_col.text_input(
+                "X-axis label", placeholder="Automatic",
+            )
+            custom_y_label = label_y_col.text_input(
+                "Y-axis label", placeholder="Automatic",
+            )
+            args['x_label'] = custom_x_label.strip() or None
+            args['y_label'] = custom_y_label.strip() or None
+
+            grid_col, legend_col = st.columns(2)
+            args['show_grid'] = grid_col.checkbox("Show grid", value=True)
+            args['show_legend'] = legend_col.checkbox(
+                "Show legend / colour scale",
+                value=True,
+                help=(
+                    "Controls categorical legends and the continuous colour "
+                    "scale used by line, layer, and heatmap fatbands."
+                ),
+            )
+
+            legend_location_col, legend_title_col = st.columns(2)
+            fatband_mode = args.get('fatbands_mode', '')
+            uses_colour_scale = pt == 'fatbands' and (
+                fatband_mode == 'normal'
+                or fatband_mode == 'layer'
+                or fatband_mode.startswith('o_')
+                or fatband_mode.startswith('heat_')
+            )
+            args['legend_location'] = legend_location_col.selectbox(
+                "Legend position",
+                [
+                    "best", "upper right", "upper left", "lower left",
+                    "lower right", "center right", "center left",
+                    "lower center", "upper center", "center",
+                ],
+                disabled=not args['show_legend'] or uses_colour_scale,
+                help=(
+                    "Applies to categorical legends. Continuous colour "
+                    "scales remain beside the plot."
+                ),
+            )
+            custom_legend_title = legend_title_col.text_input(
+                "Legend / scale title",
+                placeholder="Optional",
+                disabled=not args['show_legend'],
+            )
+            args['legend_title'] = custom_legend_title.strip() or None
 
             st.markdown("##### Colors & Visuals")
             cmap_options = ["tab10", "magma", "viridis", "jet", "coolwarm", "bwr"]
@@ -393,8 +463,6 @@ def render_dashboard():
 
                     if plt.get_fignums():
                         fig = plt.gcf()
-                        # Adjust size explicitly
-                        fig.set_size_inches(fig_width, fig_height)
 
                         buf = BytesIO()
                         fig.savefig(buf, format="png", dpi=args.get('dpi', 200), bbox_inches='tight')

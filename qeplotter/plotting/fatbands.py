@@ -12,6 +12,12 @@ from ase import Atoms
 from qeplotter.core.io import read_band_xdistances, read_fatband_files
 from qeplotter.core.utils import strip_number
 from qeplotter.analysis.bandgap import _find_band_gap, _annotate_band_gap
+from qeplotter.plotting.style import (
+    apply_axis_style,
+    apply_legend,
+    display_text,
+    figure_size,
+)
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SCRIPT_DIR = os.path.dirname(os.path.dirname(SCRIPT_DIR))
@@ -53,6 +59,24 @@ def _layer_plot_title(bottom_material, top_material):
         material_name = f"{bottom_formula} / {top_formula}"
     return f"{material_name} · layer-resolved fatbands"
 
+
+def _create_plot_axes(plot_total_dos, dpi, figsize):
+    """Create the shared fatband layout with an optional DOS side panel."""
+    resolved_figsize = figure_size(
+        figsize, (10, 6) if plot_total_dos else (8, 6)
+    )
+    if plot_total_dos:
+        return plt.subplots(
+            1,
+            2,
+            gridspec_kw={'width_ratios': [3, 1]},
+            figsize=resolved_figsize,
+            dpi=dpi,
+            sharey=True,
+        )
+    fig, ax = plt.subplots(1, 1, figsize=resolved_figsize, dpi=dpi)
+    return fig, (ax, None)
+
 def plot_fatbands(
     fatband_dir,
     kpath_file,
@@ -82,6 +106,15 @@ def plot_fatbands(
         show_band_gap=False,
         scf_file=None,
         data_note=None,
+        figsize=None,
+        plot_title=None,
+        x_label=None,
+        y_label=None,
+        show_title=True,
+        show_grid=True,
+        show_legend=True,
+        legend_location='best',
+        legend_title=None,
 ):
     """
       Plot fatbands from Quantum ESPRESSO data.
@@ -231,17 +264,7 @@ def plot_fatbands(
         colors = [cmap(i) for i in idx_plot]
         sizes = s_min + (s_max - s_min) * (val_plot / global_max if global_max>0 else 0)
         # Setup figure
-        if plot_total_dos:
-            if dpi is not None:
-                fig, (ax1, ax2) = plt.subplots(1,2, gridspec_kw={'width_ratios':[3,1]}, figsize=(10,6), dpi=dpi, sharey=True)
-            else:
-                fig, (ax1, ax2) = plt.subplots(1,2, gridspec_kw={'width_ratios':[3,1]}, figsize=(10,6), sharey=True)
-        else:
-            if dpi is not None:
-                fig, ax1 = plt.subplots(1,1,figsize=(8,6), dpi=dpi)
-            else:
-                fig, ax1 = plt.subplots(1,1,figsize=(8,6))
-            ax2 = None
+        fig, (ax1, ax2) = _create_plot_axes(plot_total_dos, dpi, figsize)
         # Scatter
         ax1.scatter(X_plot, E_plot, s=sizes, c=colors, edgecolor='k', lw=0.3, alpha=0.8, zorder=1)
         # Overlay band lines (split segments)
@@ -261,17 +284,32 @@ def plot_fatbands(
                     ax1.plot(x, y, 'o', color='gray', markersize=2, zorder=0)
         ax1.set_xticks(tick_positions)
         ax1.set_xticklabels(tick_labels)
-        ax1.set_xlabel('K-point Path')
-        ax1.set_ylabel('Energy (eV)')
         if y_range:
             ax1.set_ylim(y_range)
         title_mode = mode.capitalize() if mode!='most' else 'Most'
-        ax1.set_title(f'Fatbands ({title_mode})')
+        ylabel = 'E - E_F (eV)' if (shift_fermi and fermi_level is not None) else 'Energy (eV)'
+        apply_axis_style(
+            ax1,
+            default_title=f'Fatbands ({title_mode})',
+            default_xlabel='K-point Path',
+            default_ylabel=ylabel,
+            plot_title=plot_title,
+            x_label=x_label,
+            y_label=y_label,
+            show_title=show_title,
+            show_grid=show_grid,
+        )
         # Legend
         for i, key in enumerate(unique_keys):
             ax1.scatter([], [], c=[cmap(i)], label=key, edgecolor='k', lw=0.3)
-        ax1.legend(fontsize='small', ncol=2, loc='best')
-        ax1.grid(True, ls='--', alpha=0.3)
+        apply_legend(
+            ax1,
+            show_legend=show_legend,
+            location=legend_location,
+            title=legend_title,
+            fontsize='small',
+            ncol=2,
+        )
         # Total DOS panel
         if plot_total_dos:
             ax2.plot(DOS, E_dos, 'k-', lw=1)
@@ -281,7 +319,10 @@ def plot_fatbands(
             if x_range:
                 ax2.set_xlim(x_range)
             ax2.axvline(0, color='gray', ls='--', lw=0.8)
-            ax2.grid(True, ls='--', alpha=0.3)
+            if show_grid:
+                ax2.grid(True, ls='--', alpha=0.3)
+            else:
+                ax2.grid(False)
 
         # --- BAND GAP ANNOTATION ---
         if show_band_gap:
@@ -527,31 +568,7 @@ def plot_fatbands(
 
         nbands = band_energies.shape[0]
 
-        if plot_total_dos:
-
-            if dpi is not None:
-
-                fig, (ax1, ax2) = plt.subplots(1, 2, gridspec_kw={'width_ratios': [3, 1]},
-
-                                               figsize=(10, 6), dpi=dpi, sharey=True)
-
-            else:
-
-                fig, (ax1, ax2) = plt.subplots(1, 2, gridspec_kw={'width_ratios': [3, 1]},
-
-                                               figsize=(10, 6), sharey=True)
-
-        else:
-
-            if dpi is not None:
-
-                fig, ax1 = plt.subplots(1, 1, figsize=(8, 6), dpi=dpi)
-
-            else:
-
-                fig, ax1 = plt.subplots(1, 1, figsize=(8, 6))
-
-            ax2 = None
+        fig, (ax1, ax2) = _create_plot_axes(plot_total_dos, dpi, figsize)
 
         for b in range(nbands):
 
@@ -609,40 +626,50 @@ def plot_fatbands(
         ]
         ax1.set_xticklabels(display_tick_labels)
 
-        ax1.set_xlabel('K-point Path')
-
         ylabel = 'E - E_F (eV)' if (shift_fermi and fermi_level is not None) else 'Energy (eV)'
-        ax1.set_ylabel(ylabel)
 
         if y_range:
             ax1.set_ylim(y_range)
 
         if mode == 'layer':
-            ax1.set_title(
-                _layer_plot_title(bottom_material, top_material), pad=12
-            )
+            default_title = _layer_plot_title(bottom_material, top_material)
 
         else:
 
             title_mode = mode if mode != 'normal' else f"Highlight {highlight_channel}"
 
-            ax1.set_title(f'Fatbands ({title_mode})')
+            default_title = f'Fatbands ({title_mode})'
 
-        sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+        apply_axis_style(
+            ax1,
+            default_title=default_title,
+            default_xlabel='K-point Path',
+            default_ylabel=ylabel,
+            plot_title=plot_title,
+            x_label=x_label,
+            y_label=y_label,
+            show_title=show_title,
+            show_grid=show_grid,
+            grid_alpha=0.22,
+        )
 
-        sm.set_array([])
+        if show_legend:
+            scale_title = display_text(legend_title, colorbar_label)
+            sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
 
-        cbar = plt.colorbar(sm, ax=ax1, pad=0.02)
+            sm.set_array([])
 
-        cbar.set_label(colorbar_label)
+            cbar = plt.colorbar(sm, ax=ax1, pad=0.02)
 
-        if mode == 'layer':
-            cbar.set_ticks([0.0, 0.5, 1.0])
-            cbar.set_ticklabels([bottom_material, 'Mixed', top_material])
-            cbar.set_label('')
-            cbar.ax.set_title(colorbar_label, fontsize=10, pad=8)
-            cbar.ax.tick_params(length=0, pad=6, labelsize=10)
-            cbar.outline.set_linewidth(0.7)
+            cbar.set_label(scale_title)
+
+            if mode == 'layer':
+                cbar.set_ticks([0.0, 0.5, 1.0])
+                cbar.set_ticklabels([bottom_material, 'Mixed', top_material])
+                cbar.set_label('')
+                cbar.ax.set_title(scale_title, fontsize=10, pad=8)
+                cbar.ax.tick_params(length=0, pad=6, labelsize=10)
+                cbar.outline.set_linewidth(0.7)
 
         if overlay_bands_in_heat:
 
@@ -672,7 +699,6 @@ def plot_fatbands(
 
         ax1.set_axisbelow(True)
         ax1.margins(x=0)
-        ax1.grid(True, ls='--', lw=0.7, alpha=0.22)
         if shift_fermi and fermi_level is not None:
             ax1.axhline(0.0, color='#555555', ls='--', lw=0.9, alpha=0.8, zorder=0)
 
@@ -691,7 +717,10 @@ def plot_fatbands(
             if x_range:
                 ax2.set_xlim(x_range)
             ax2.axvline(0, color='gray', ls='--', lw=0.8)
-            ax2.grid(True, ls='--', alpha=0.3)
+            if show_grid:
+                ax2.grid(True, ls='--', alpha=0.3)
+            else:
+                ax2.grid(False)
 
         # --- BAND GAP ANNOTATION ---
         if show_band_gap:
@@ -761,17 +790,7 @@ def plot_fatbands(
             else:
                 raise ValueError(f"Unknown heat mode: {mode}")
         # Setup figure
-        if plot_total_dos:
-            if dpi is not None:
-                fig, (ax1, ax2) = plt.subplots(1,2, gridspec_kw={'width_ratios':[3,1]}, figsize=(10,6), dpi=dpi, sharey=True)
-            else:
-                fig, (ax1, ax2) = plt.subplots(1,2, gridspec_kw={'width_ratios':[3,1]}, figsize=(10,6), sharey=True)
-        else:
-            if dpi is not None:
-                fig, ax1 = plt.subplots(1,1,figsize=(8,6), dpi=dpi)
-            else:
-                fig, ax1 = plt.subplots(1,1,figsize=(8,6))
-            ax2 = None
+        fig, (ax1, ax2) = _create_plot_axes(plot_total_dos, dpi, figsize)
         # Flatten grid
         X_flat = np.repeat(x_dist, N_e)
         E_flat = E_grid.flatten()
@@ -808,20 +827,28 @@ def plot_fatbands(
         # X-ticks
         ax1.set_xticks(tick_positions)
         ax1.set_xticklabels(tick_labels)
-        ax1.set_xlabel('K-point Path')
-        
         ylabel = 'E - E_F (eV)' if (shift_fermi and fermi_level is not None) else 'Energy (eV)'
-        ax1.set_ylabel(ylabel)
         if y_range:
             ax1.set_ylim(y_range)
         # Title and colorbar
         mode_title = mode.replace('_',' ').title()
-        ax1.set_title(f'Fatbands ({mode_title})')
-        sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
-        sm.set_array([])
-        cbar = plt.colorbar(sm, ax=ax1, pad=0.02)
-        cbar.set_label(heat_label)
-        ax1.grid(True, ls='--', alpha=0.3)
+        apply_axis_style(
+            ax1,
+            default_title=f'Fatbands ({mode_title})',
+            default_xlabel='K-point Path',
+            default_ylabel=ylabel,
+            plot_title=plot_title,
+            x_label=x_label,
+            y_label=y_label,
+            show_title=show_title,
+            show_grid=show_grid,
+        )
+        if show_legend:
+            scale_title = display_text(legend_title, heat_label)
+            sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+            sm.set_array([])
+            cbar = plt.colorbar(sm, ax=ax1, pad=0.02)
+            cbar.set_label(scale_title)
         # Total DOS panel
         if plot_total_dos:
             if shift_fermi and fermi_level is not None:
@@ -835,7 +862,10 @@ def plot_fatbands(
             if x_range:
                 ax2.set_xlim(x_range)
             ax2.axvline(0, color='gray', ls='--', lw=0.8)
-            ax2.grid(True, ls='--', alpha=0.3)
+            if show_grid:
+                ax2.grid(True, ls='--', alpha=0.3)
+            else:
+                ax2.grid(False)
 
         # --- BAND GAP ANNOTATION ---
         if show_band_gap:

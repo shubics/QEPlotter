@@ -10,6 +10,11 @@ import numpy as np
 from qeplotter.core.io import read_band_xdistances, read_fatband_files
 from qeplotter.core.utils import strip_number
 from qeplotter.analysis.bandgap import _find_band_gap, _annotate_band_gap
+from qeplotter.plotting.style import (
+    apply_axis_style,
+    apply_legend,
+    figure_size,
+)
 
 
 def overlay_band_plot(
@@ -17,7 +22,10 @@ def overlay_band_plot(
     fermi_level=None, shift_fermi=False,
     y_range=None, dpi=None, color1='red', color2='blue',
     label1='Band1', label2='Band2',
-    save_dir="saved", savefig=None
+    save_dir="saved", savefig=None,
+    figsize=None, plot_title=None, x_label=None, y_label=None,
+    show_title=True, show_grid=True, show_legend=True,
+    legend_location='best', legend_title=None,
 ):
     """
     Overlay two band structures on the same plot.
@@ -29,7 +37,7 @@ def overlay_band_plot(
         bands1 = bands1 - fermi_level
         bands2 = bands2 - fermi_level
 
-    plt.figure(figsize=(8,6) if dpi is None else (8,6), dpi=dpi)
+    plt.figure(figsize=figure_size(figsize, (8, 6)), dpi=dpi)
 
     for i, band in enumerate(bands1):
         for (s, e) in segs1:
@@ -41,20 +49,33 @@ def overlay_band_plot(
     for tx in ticks1:
         plt.axvline(tx, color='gray', ls='--', alpha=0.5)
     plt.xticks(ticks1, labels1)
-    plt.xlabel('K-point Path')
-    
     ylabel = 'E - E_F (eV)' if (shift_fermi and fermi_level is not None) else 'Energy (eV)'
-    plt.ylabel(ylabel)
 
     if y_range:
         plt.ylim(y_range)
     if fermi_level is not None:
         y0 = 0.0 if shift_fermi else fermi_level
         plt.axhline(y0, color='r', ls='--', lw=1.2, label=f'Fermi = {fermi_level:.2f} eV')
-    plt.grid(True, ls='--', alpha=0.4)
-    plt.legend()
+    ax = plt.gca()
+    apply_axis_style(
+        ax,
+        default_title="Overlaid Band Structures",
+        default_xlabel="K-point Path",
+        default_ylabel=ylabel,
+        plot_title=plot_title,
+        x_label=x_label,
+        y_label=y_label,
+        show_title=show_title,
+        show_grid=show_grid,
+        grid_alpha=0.4,
+    )
+    apply_legend(
+        ax,
+        show_legend=show_legend,
+        location=legend_location,
+        title=legend_title,
+    )
     plt.tight_layout()
-    plt.title("Overlayed Band Structures")
 
     # --- Save ---
     def sanitize(s):
@@ -92,7 +113,16 @@ def plot_band(
     dos_file=None,
     x_range=None,
     show_band_gap=False,
-    scf_file=None
+    scf_file=None,
+    figsize=None,
+    plot_title=None,
+    x_label=None,
+    y_label=None,
+    show_title=True,
+    show_grid=True,
+    show_legend=True,
+    legend_location='best',
+    legend_title=None,
 ):
     """
     Plot the electronic band structure from Quantum ESPRESSO.
@@ -119,16 +149,19 @@ def plot_band(
             E_dos = E_dos - fermi_level
 
     # --- SETUP FIGURE ---
+    resolved_figsize = figure_size(
+        figsize, (10, 6) if plot_total_dos else (8, 6)
+    )
     if plot_total_dos:
         if dpi is not None:
-            fig, (ax1, ax2) = plt.subplots(1, 2, gridspec_kw={'width_ratios': [3, 1]}, figsize=(10, 6), dpi=dpi, sharey=True)
+            fig, (ax1, ax2) = plt.subplots(1, 2, gridspec_kw={'width_ratios': [3, 1]}, figsize=resolved_figsize, dpi=dpi, sharey=True)
         else:
-            fig, (ax1, ax2) = plt.subplots(1, 2, gridspec_kw={'width_ratios': [3, 1]}, figsize=(10, 6), sharey=True)
+            fig, (ax1, ax2) = plt.subplots(1, 2, gridspec_kw={'width_ratios': [3, 1]}, figsize=resolved_figsize, sharey=True)
     else:
         if dpi is not None:
-            fig, ax1 = plt.subplots(1, 1, figsize=(8, 6), dpi=dpi)
+            fig, ax1 = plt.subplots(1, 1, figsize=resolved_figsize, dpi=dpi)
         else:
-            fig, ax1 = plt.subplots(1, 1, figsize=(8, 6))
+            fig, ax1 = plt.subplots(1, 1, figsize=resolved_figsize)
         ax2 = None
 
     if band_mode == 'normal' or band_mode is None:
@@ -216,22 +249,27 @@ def plot_band(
         # Legend for colored bands
         for i, key in enumerate(unique_keys):
             ax1.plot([], [], c=cmap(i), label=key, lw=2)
-        ax1.legend(fontsize='small', ncol=2, loc='best')
         title = f'Band Structure ({band_mode})'
 
     # --- COMMON PLOTTING ---
     ax1.set_xticks(tick_positions)
     ax1.set_xticklabels(tick_labels)
-    ax1.set_xlabel('K-point Path')
-    
     # Dynamic Y-label based on shift
     ylabel = 'E - E_F (eV)' if (shift_fermi and fermi_level is not None) else 'Energy (eV)'
-    ax1.set_ylabel(ylabel)
-    
+
     if y_range:
         ax1.set_ylim(y_range)
-    ax1.set_title(title)
-    ax1.grid(True, ls='--', alpha=0.3)
+    apply_axis_style(
+        ax1,
+        default_title=title,
+        default_xlabel='K-point Path',
+        default_ylabel=ylabel,
+        plot_title=plot_title,
+        x_label=x_label,
+        y_label=y_label,
+        show_title=show_title,
+        show_grid=show_grid,
+    )
     ax1.autoscale(enable=True, axis='x', tight=True)
     
     # Add Fermi line to Band Plot
@@ -262,13 +300,31 @@ def plot_band(
              # Just a zero line if no fermi info
              ax2.axhline(0, color='gray', ls='--', lw=0.8)
 
-        ax2.grid(True, ls='--', alpha=0.4)
+        if show_grid:
+            ax2.grid(True, ls='--', alpha=0.4)
+        else:
+            ax2.grid(False)
         
         # Hide Y-axis labels on DOS plot since they are shared
         plt.setp(ax2.get_yticklabels(), visible=False)
         
         if fermi_level is not None:
-             ax2.legend(fontsize='small', loc='upper right')
+             apply_legend(
+                 ax2,
+                 show_legend=show_legend,
+                 location=legend_location,
+                 title=legend_title,
+                 fontsize='small',
+             )
+
+    apply_legend(
+        ax1,
+        show_legend=show_legend,
+        location=legend_location,
+        title=legend_title,
+        fontsize='small',
+        ncol=2,
+    )
 
     # --- BAND GAP ANNOTATION ---
     if show_band_gap:
