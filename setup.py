@@ -27,6 +27,7 @@ setup(
         'plotly>=5.20,<7',
     ],
     author='Şuayb Yıldız',
+    author_email='suaybyildiz1@gmail.com',
     description='Quantum ESPRESSO band structure and DOS plotting tool',
     long_description=(ROOT / "README.md").read_text(encoding="utf-8"),
     long_description_content_type='text/markdown',

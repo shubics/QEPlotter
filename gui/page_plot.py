@@ -202,10 +202,24 @@ def render_dashboard():
                     help="How to group projected orbitals: by atom element, orbital type, or element-orbital pair", **settings_change)
 
             if pt == "band":
-                bm = st.selectbox("Band Mode", ["normal", "atomic", "orbital", "element_orbital", "most"], help="Mode for coloring bands", **settings_change)
+                bm = st.selectbox(
+                    "Band Mode",
+                    ["normal", "atomic", "orbital", "element_orbital", "most"],
+                    help=(
+                        "Atomic groups by atom ID; element_orbital combines "
+                        "equivalent elements; most keeps each atom-orbital "
+                        "channel separate."
+                    ),
+                    **settings_change,
+                )
                 args['band_mode'] = bm
                 if bm != 'normal':
                     st.info("Colored bands require Fatband/PDOS files in the Data tab.")
+                    if bm == 'most':
+                        st.caption(
+                            "Most Dominant colours each band by its strongest "
+                            "individual atom-orbital channel."
+                        )
                 else:
                     args['band_mode'] = 'normal'
 
@@ -248,6 +262,11 @@ def render_dashboard():
 
                 args['fatbands_mode'] = fb_mode
                 st.caption(f"*(Internal mode: `{fb_mode}`)*")
+                if base_m == 'most':
+                    st.caption(
+                        "Most Dominant keeps atom identity (for example S1-p "
+                        "and S2-p). Element-Orbital combines them as S-p."
+                    )
 
                 # Layer Assignment Logic
                 if base_m == 'layer':
@@ -356,7 +375,7 @@ def render_dashboard():
                 elif base_m == 'element_orbital':
                     hl_options = exp_orbs
                 elif base_m == 'atomic':
-                    hl_options = elements
+                    hl_options = atoms
 
                 # Inject generic if lists are empty (e.g. before upload)
                 if not hl_options:
@@ -371,7 +390,7 @@ def render_dashboard():
                     h1 = c_h1.selectbox("Channel 1", hl_options, index=0, **settings_change)
                     h2 = c_h2.selectbox("Channel 2", hl_options, index=idx2, **settings_change)
                     args['highlight_channel'] = (h1, h2)
-                elif "heat" in fb_mode or fb_mode in ['normal', 'most', 'o_orbital', 'o_atomic', 'o_element_orbital']:
+                elif "heat" in fb_mode or fb_mode in ['normal', 'o_orbital', 'o_atomic', 'o_element_orbital']:
                     args['highlight_channel'] = st.selectbox("Highlight Channel", hl_options, index=0, help="Specific element/orbital to highlight", **settings_change)
 
                 if "heat" in fb_mode:

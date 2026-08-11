@@ -89,6 +89,93 @@ class PlotControlTests(unittest.TestCase):
         for line in ax.lines:
             self.assertEqual(matplotlib.colors.to_rgba(line.get_color()), (0, 0, 0, 1))
 
+    @patch("qeplotter.plotting.bands.read_fatband_files")
+    @patch("qeplotter.plotting.bands.read_band_xdistances")
+    def test_colored_band_most_preserves_atom_orbital_identity(
+        self, mocked_read_bands, mocked_read_fatbands
+    ):
+        mocked_read_bands.return_value = (
+            np.array([0.0, 1.0]),
+            np.array([[-1.0, 0.5]]),
+            [0.0, 1.0],
+            ["G", "X"],
+            [(0, 1)],
+        )
+        mocked_read_fatbands.return_value = (
+            [("Mo1", "d"), ("Mo2", "d"), ("S3", "p")],
+            np.array([1, 2]),
+            np.array([[-1.0, 0.0], [0.0, 0.5]]),
+            [
+                np.array([[0.6, 0.1], [0.1, 0.2]]),
+                np.array([[0.2, 0.1], [0.1, 0.7]]),
+                np.array([[0.1, 0.8], [0.8, 0.1]]),
+            ],
+        )
+
+        with patch("matplotlib.pyplot.show"):
+            plot_band(
+                "bands.gnu", "kpath.in",
+                band_mode="element_orbital", fatband_dir="projections",
+            )
+        element_orbital_labels = {
+            text.get_text() for text in plt.gca().get_legend().get_texts()
+        }
+        self.assertEqual(element_orbital_labels, {"Mo-d", "S-p"})
+
+        plt.close("all")
+        with patch("matplotlib.pyplot.show"):
+            plot_band(
+                "bands.gnu", "kpath.in",
+                band_mode="most", fatband_dir="projections",
+            )
+        most_labels = {
+            text.get_text() for text in plt.gca().get_legend().get_texts()
+        }
+        self.assertEqual(most_labels, {"Mo1-d", "Mo2-d", "S3-p"})
+
+    @patch("qeplotter.plotting.fatbands.read_band_xdistances")
+    @patch("qeplotter.plotting.fatbands.read_fatband_files")
+    def test_fatband_most_differs_from_element_orbital_grouping(
+        self, mocked_read_fatbands, mocked_read_bands
+    ):
+        mocked_read_fatbands.return_value = (
+            [("Mo1", "d"), ("Mo2", "d"), ("S3", "p")],
+            np.array([1, 2]),
+            np.array([[-1.0, 0.0], [-0.8, 0.2]]),
+            [
+                np.array([[0.6, 0.1], [0.1, 0.2]]),
+                np.array([[0.2, 0.1], [0.1, 0.7]]),
+                np.array([[0.1, 0.8], [0.8, 0.1]]),
+            ],
+        )
+        mocked_read_bands.return_value = (
+            np.array([0.0, 1.0]),
+            np.array([[-1.0, -0.8]]),
+            [0.0, 1.0],
+            ["G", "X"],
+            [(0, 1)],
+        )
+
+        with patch("matplotlib.pyplot.show"):
+            plot_fatbands(
+                "projections", "kpath.in", "bands.gnu",
+                mode="element_orbital",
+            )
+        element_orbital_labels = {
+            text.get_text() for text in plt.gca().get_legend().get_texts()
+        }
+        self.assertEqual(element_orbital_labels, {"Mo-d", "S-p"})
+
+        plt.close("all")
+        with patch("matplotlib.pyplot.show"):
+            plot_fatbands(
+                "projections", "kpath.in", "bands.gnu", mode="most"
+            )
+        most_labels = {
+            text.get_text() for text in plt.gca().get_legend().get_texts()
+        }
+        self.assertEqual(most_labels, {"Mo1-d", "Mo2-d", "S3-p"})
+
     def test_empty_custom_text_preserves_automatic_labels(self):
         with tempfile.TemporaryDirectory() as directory:
             dos_file = Path(directory) / "sample.dos"

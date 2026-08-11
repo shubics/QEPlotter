@@ -133,6 +133,7 @@ This is the library's most advanced feature, visualizing the contribution of spe
 *   **`atomic`**: Sums all orbitals ($s, p, d, f$) belonging to a specific Atom ID (e.g., "Mo1").
 *   **`orbital`**: Sums contributions by orbital type across *all* atoms (e.g., "Total d-character").
 *   **`element_orbital`**: Granular breakdown (e.g., "Mo-d" vs "S-p").
+*   **`most`**: Keeps individual atom-orbital channels separate (e.g., "S1-p" vs "S2-p") and displays the locally dominant one.
 *   **`sub_orb`**: If enabled, splits $d$ orbitals into $d_{z^2}, d_{x^2-y^2}, d_{xy}, d_{xz}, d_{yz}$. (Requires $m_j/m_l$ resolved data).
 
 #### C. Layer-Resolved Plots

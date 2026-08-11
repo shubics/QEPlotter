@@ -4,7 +4,6 @@ Extracted verbatim from qep.py (plot_fatbands — all bubble, line/layer, heat m
 """
 import os
 import matplotlib.pyplot as plt
-import matplotlib.cm as cm
 import matplotlib.collections as mcoll
 import numpy as np
 from ase import Atoms
@@ -200,14 +199,16 @@ def plot_fatbands(
         DOS   = dos_data[:,1]
         if shift_fermi and fermi_level is not None:
             E_dos = E_dos - fermi_level
-    if mode == 'layer':
-        atom_name_fn = lambda x: x
-    else:
-        atom_name_fn = strip_number
-
-    elems = [atom_name_fn(a) for (a, _) in labels]
+    atom_labels = [a for (a, _) in labels]
+    element_labels = [strip_number(a) for (a, _) in labels]
     orbs = [o for (_, o) in labels]
-    ch_labels = [f"{atom_name_fn(a)}-{o}" for (a, o) in labels]
+    element_orbital_labels = [
+        f"{element}-{orb}"
+        for element, orb in zip(element_labels, orbs)
+    ]
+    atom_orbital_labels = [
+        f"{atom}-{orb}" for atom, orb in zip(atom_labels, orbs)
+    ]
     bubble_modes = {'most','atomic','orbital','element_orbital'}
     line_modes = {'normal','o_atomic','o_orbital','o_element_orbital'}
     heat_modes = {'heat_total','heat_atomic','heat_orbital','heat_element_orbital'}
@@ -216,10 +217,10 @@ def plot_fatbands(
     if mode in bubble_modes:
         # Build grouped weights Wg
         if mode == 'atomic':
-            unique_keys = sorted(set(elems))
+            unique_keys = sorted(set(atom_labels))
             Wg = np.zeros((len(unique_keys), N_k, N_e))
             for i, key in enumerate(unique_keys):
-                for idx, a in enumerate(elems):
+                for idx, a in enumerate(atom_labels):
                     if a == key:
                         Wg[i] += W_grids[idx]
         elif mode == 'orbital':
@@ -230,17 +231,17 @@ def plot_fatbands(
                     if o == key:
                         Wg[i] += W_grids[idx]
         elif mode == 'element_orbital':
-            unique_keys = sorted(set(ch_labels))
+            unique_keys = sorted(set(element_orbital_labels))
             Wg = np.zeros((len(unique_keys), N_k, N_e))
             for i, key in enumerate(unique_keys):
-                for idx, lab in enumerate(ch_labels):
+                for idx, lab in enumerate(element_orbital_labels):
                     if lab == key:
                         Wg[i] += W_grids[idx]
         else:  # 'most'
-            unique_keys = sorted(set(ch_labels))
+            unique_keys = sorted(set(atom_orbital_labels))
             Wg = np.zeros((len(unique_keys), N_k, N_e))
             for i, key in enumerate(unique_keys):
-                for idx, lab in enumerate(ch_labels):
+                for idx, lab in enumerate(atom_orbital_labels):
                     if lab == key:
                         Wg[i] += W_grids[idx]
         # Determine dominant channel and weight
@@ -260,7 +261,7 @@ def plot_fatbands(
         idx_plot = idx_flat[mask]
         val_plot = val_flat[mask]
         # Colors/sizes
-        cmap = cm.get_cmap(cmap_name, len(unique_keys))
+        cmap = plt.get_cmap(cmap_name, len(unique_keys))
         colors = [cmap(i) for i in idx_plot]
         sizes = s_min + (s_max - s_min) * (val_plot / global_max if global_max>0 else 0)
         # Setup figure
@@ -343,21 +344,6 @@ def plot_fatbands(
 
 
     elif mode in line_modes or mode == 'layer':
-
-        if mode == 'layer':
-
-            atom_name_fn = lambda x: x
-
-        else:
-
-            atom_name_fn = strip_number
-
-        elems = [atom_name_fn(a) for (a, _) in labels]
-        orbs = [o for (_, o) in labels]
-        ch_labels = [f"{atom_name_fn(a)}-{o}" for (a, o) in labels]
-
-        
-
         if mode == 'layer':
             # 1. Unique atom names from labels (now like 'W1', 'Mo2', 'S3' ...)
             atom_names = sorted(set(a for (a, _) in labels))
@@ -419,7 +405,7 @@ def plot_fatbands(
 
                 if mode == 'o_atomic':
 
-                    valid = sorted(set([a for (a, _) in labels]))
+                    valid = sorted(set(atom_labels))
 
 
 
@@ -429,7 +415,7 @@ def plot_fatbands(
 
                 else:
 
-                    valid = sorted(set(ch_labels))
+                    valid = sorted(set(element_orbital_labels))
 
                 if key1 not in valid or key2 not in valid:
                     raise ValueError(f"dual keys {groups!r} must be among {valid}")
@@ -439,7 +425,7 @@ def plot_fatbands(
                 W2 = np.zeros((N_k, N_e))
 
                 if mode == 'o_atomic':
-                    for i, (a, _) in enumerate(labels):
+                    for i, a in enumerate(atom_labels):
                         if a == key1:
                             W1 += W_grids[i]
                         elif a == key2:
@@ -457,7 +443,7 @@ def plot_fatbands(
 
                 else:
 
-                    for i, lab in enumerate(ch_labels):
+                    for i, lab in enumerate(element_orbital_labels):
 
                         if lab == key1:
                             W1 += W_grids[i]
@@ -482,7 +468,7 @@ def plot_fatbands(
                     if highlight_channel is None:
                         raise ValueError("highlight_channel must be provided for o_atomic mode")
 
-                    unique_atoms = sorted(set(elems))
+                    unique_atoms = sorted(set(atom_labels))
 
                     if highlight_channel not in unique_atoms:
                         raise ValueError(f"highlight_channel '{highlight_channel}' not in atomic keys {unique_atoms}")
@@ -490,7 +476,7 @@ def plot_fatbands(
                     Wtot = np.zeros((N_k, N_e));
                     Whigh = np.zeros((N_k, N_e))
 
-                    for idx, a in enumerate(elems):
+                    for idx, a in enumerate(atom_labels):
 
                         Wtot += W_grids[idx]
 
@@ -522,7 +508,7 @@ def plot_fatbands(
                     if highlight_channel is None:
                         raise ValueError("highlight_channel must be provided for o_element_orbital mode")
 
-                    unique_eo = sorted(set(ch_labels))
+                    unique_eo = sorted(set(element_orbital_labels))
 
                     if highlight_channel not in unique_eo:
                         raise ValueError(
@@ -531,7 +517,7 @@ def plot_fatbands(
                     Wtot = np.zeros((N_k, N_e));
                     Whigh = np.zeros((N_k, N_e))
 
-                    for idx, lab in enumerate(ch_labels):
+                    for idx, lab in enumerate(element_orbital_labels):
 
                         Wtot += W_grids[idx]
 
@@ -750,11 +736,11 @@ def plot_fatbands(
             if highlight_channel is None:
                 raise ValueError(f"highlight_channel must be provided for {mode}")
             if mode == 'heat_atomic':
-                unique_atoms = sorted(set(elems))
+                unique_atoms = sorted(set(atom_labels))
                 if highlight_channel not in unique_atoms:
                     raise ValueError(f"highlight_channel '{highlight_channel}' not in atomic keys {unique_atoms}")
                 Whigh = np.zeros((N_k, N_e))
-                for idx, a in enumerate(elems):
+                for idx, a in enumerate(atom_labels):
                     if a == highlight_channel:
                         Whigh += W_grids[idx]
                 heat_grid = Whigh
@@ -770,11 +756,11 @@ def plot_fatbands(
                 heat_grid = Whigh
                 heat_label = f"Weight of orbital {highlight_channel}"
             elif mode == 'heat_element_orbital':
-                unique_eo = sorted(set(ch_labels))
+                unique_eo = sorted(set(element_orbital_labels))
                 if highlight_channel not in unique_eo:
                     raise ValueError(f"highlight_channel '{highlight_channel}' not in element-orbital keys {unique_eo}")
                 Whigh = np.zeros((N_k, N_e))
-                for idx, lab in enumerate(ch_labels):
+                for idx, lab in enumerate(element_orbital_labels):
                     if lab == highlight_channel:
                         Whigh += W_grids[idx]
                 heat_grid = Whigh

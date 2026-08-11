@@ -43,7 +43,7 @@ QEPlotter's automatic labels.
 
 | Parameter | Type | Default | Description |
 |:---|:---|:---|:---|
-| `band_mode` | `str` | `'normal'` | Band colouring: `'normal'`, `'atomic'`, `'orbital'`, `'element_orbital'`, or `'most'`. |
+| `band_mode` | `str` | `'normal'` | Band colouring: `'atomic'` groups atom IDs, `'orbital'` groups orbital types, `'element_orbital'` merges equal element-orbital channels, and `'most'` preserves individual atom-orbital channels. |
 | `fatband_dir` | `str` | `None` | Directory containing `projwfc.x` projection files. |
 | `fatbands_mode` | `str` | `'most'` | Fatband mode: bubble modes, `heat_*`, `o_*`, or `'layer'`. |
 | `spin` | `bool` | `False` | Enable spin-polarized projection parsing. |

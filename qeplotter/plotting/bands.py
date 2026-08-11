@@ -133,7 +133,6 @@ def plot_band(
     """
     Plot the electronic band structure from Quantum ESPRESSO.
     """
-    import matplotlib.cm as cm
     # 1) Read band data
     x_dist, band_energies, tick_positions, tick_labels, seg_ranges = read_band_xdistances(band_file, kpath_file)
     N_k = x_dist.shape[0]
@@ -188,29 +187,39 @@ def plot_band(
         if len(uniq_ik) != N_k:
             print(f"Warning: fatband N_k={len(uniq_ik)} vs band file N_k={N_k}. They should match for correct coloring.")
 
-          # strip off the atom numbers so all 'Bi1','Bi2',... become just 'Bi'
-        ch_labels = [f"{a}-{o}" for (a, o) in labels]
-        elems = [a for (a, _) in labels]
-        orbs  = [o for (_,o) in labels]
+        atom_labels = [a for (a, _) in labels]
+        element_labels = [strip_number(a) for (a, _) in labels]
+        orbs = [o for (_, o) in labels]
+        element_orbital_labels = [
+            f"{element}-{orb}"
+            for element, orb in zip(element_labels, orbs)
+        ]
+        atom_orbital_labels = [
+            f"{atom}-{orb}" for atom, orb in zip(atom_labels, orbs)
+        ]
 
         if band_mode == 'atomic':
-            unique_keys = sorted(set(elems))
-
-            group_indices = {key: [i for i,a in enumerate(elems) if a==key] for key in unique_keys}
+            group_labels = atom_labels
         elif band_mode == 'orbital':
-            unique_keys = sorted(set(orbs))
-            group_indices = {key: [i for i,o in enumerate(orbs) if o==key] for key in unique_keys}
-        elif band_mode in ('element_orbital', 'most'):
-            unique_keys = sorted(set(ch_labels))
-            group_indices = {key: [i for i,lab in enumerate(ch_labels) if lab==key] for key in unique_keys}
+            group_labels = orbs
+        elif band_mode == 'element_orbital':
+            group_labels = element_orbital_labels
+        elif band_mode == 'most':
+            group_labels = atom_orbital_labels
         else:
             raise ValueError(f"Unknown band_mode: {band_mode}")
+
+        unique_keys = sorted(set(group_labels))
+        group_indices = {
+            key: [i for i, label in enumerate(group_labels) if label == key]
+            for key in unique_keys
+        }
 
         # 3) For each band, determine dominant group:
         nbands = band_energies.shape[0]
         band_colors = [None]*nbands
 
-        cmap = cm.get_cmap(cmap_name, len(unique_keys))
+        cmap = plt.get_cmap(cmap_name, len(unique_keys))
 
         for b in range(nbands):
 
