@@ -5,10 +5,84 @@ from contextlib import redirect_stdout
 
 import streamlit as st
 import matplotlib.pyplot as plt
+from matplotlib.colors import to_hex
 
 from qeplotter.api import plot_from_file
 from gui.io_helpers import save_file, get_fermi_from_scf, get_available_channels
 from qeplotter.plotting.fatbands import _layer_material_labels
+
+
+_COLORMAP_GROUPS = {
+    "Categorical": (
+        "tab10", "tab20", "Set1", "Set2", "Set3", "Paired", "Accent",
+        "Dark2",
+    ),
+    "Perceptual sequential": (
+        "viridis", "plasma", "inferno", "magma", "cividis", "turbo",
+        "cubehelix",
+    ),
+    "Sequential": (
+        "Blues", "Greens", "Oranges", "Purples", "Greys", "YlGnBu",
+        "YlOrRd", "PuBuGn",
+    ),
+    "Diverging": (
+        "coolwarm", "RdBu_r", "Spectral", "PiYG", "PRGn", "BrBG", "bwr",
+        "seismic",
+    ),
+    "Cyclic": ("twilight", "twilight_shifted", "hsv"),
+    "Legacy": ("jet",),
+}
+_COLORMAP_OPTIONS = tuple(
+    name for names in _COLORMAP_GROUPS.values() for name in names
+)
+_CATEGORICAL_COLORMAPS = frozenset(_COLORMAP_GROUPS["Categorical"])
+
+
+def _colormap_group(cmap_name):
+    for group, names in _COLORMAP_GROUPS.items():
+        if cmap_name in names:
+            return group
+    raise ValueError(f"Unknown GUI colormap: {cmap_name}")
+
+
+def _colormap_option_label(cmap_name):
+    return f"{_colormap_group(cmap_name)} · {cmap_name}"
+
+
+def _colormap_preview_html(cmap_name):
+    """Return an accessible HTML preview of a Matplotlib colormap."""
+    cmap = plt.get_cmap(cmap_name)
+    categorical = cmap_name in _CATEGORICAL_COLORMAPS
+
+    if categorical:
+        count = min(int(getattr(cmap, "N", 10)), 20)
+        colours = [to_hex(cmap(index / max(count - 1, 1))) for index in range(count)]
+        stops = []
+        for index, colour in enumerate(colours):
+            left = 100 * index / count
+            right = 100 * (index + 1) / count
+            stops.extend((f"{colour} {left:.3f}%", f"{colour} {right:.3f}%"))
+        scale_text = f"{count} discrete colours"
+    else:
+        count = 17
+        colours = [to_hex(cmap(index / (count - 1))) for index in range(count)]
+        stops = [
+            f"{colour} {100 * index / (count - 1):.3f}%"
+            for index, colour in enumerate(colours)
+        ]
+        scale_text = "low → high"
+
+    gradient = ", ".join(stops)
+    return f"""
+    <div aria-label="{cmap_name} colormap preview" style="margin:.25rem 0 .9rem;">
+      <div style="height:30px;border:1px solid #505965;border-radius:4px;
+                  background:linear-gradient(90deg,{gradient});"></div>
+      <div style="display:flex;justify-content:space-between;margin-top:4px;
+                  color:#A8B0BA;font-size:.76rem;">
+        <span>{cmap_name}</span><span>{scale_text}</span>
+      </div>
+    </div>
+    """
 
 
 def render_dashboard():
@@ -396,13 +470,42 @@ def render_dashboard():
             args['legend_title'] = custom_legend_title.strip() or None
 
             st.markdown("##### Colors & Visuals")
-            cmap_options = ["tab10", "magma", "viridis", "jet", "coolwarm", "bwr"]
-            if args.get('fatbands_mode') == 'layer':
-                cmap_options = ["coolwarm", "viridis", "bwr", "magma", "jet"]
-            args['cmap_name'] = st.selectbox(
-                "Colormap", cmap_options,
-                help="Continuous colour scale used for projected band weights",
+            uses_cmap = pt == 'fatbands' or (
+                pt == 'band' and args.get('band_mode', 'normal') != 'normal'
             )
+            if uses_cmap:
+                if uses_colour_scale:
+                    cmap_options = tuple(
+                        name for name in _COLORMAP_OPTIONS
+                        if name not in _CATEGORICAL_COLORMAPS
+                    )
+                    default_cmap = (
+                        'coolwarm' if fatband_mode == 'layer' else 'viridis'
+                    )
+                else:
+                    cmap_options = _COLORMAP_OPTIONS
+                    default_cmap = 'tab10'
+
+                args['cmap_name'] = st.selectbox(
+                    "Colormap",
+                    cmap_options,
+                    index=cmap_options.index(default_cmap),
+                    format_func=_colormap_option_label,
+                    help=(
+                        "The preview below shows the exact colour order used "
+                        "by the generated plot."
+                    ),
+                )
+                st.markdown(
+                    _colormap_preview_html(args['cmap_name']),
+                    unsafe_allow_html=True,
+                )
+            else:
+                args['cmap_name'] = 'tab10'
+                st.caption(
+                    "This plot mode uses fixed line colours; switch to a "
+                    "projected band or fatband mode to select a colormap."
+                )
 
             if pt == "fatbands":
                 c_adv1, c_adv2 = st.columns(2)

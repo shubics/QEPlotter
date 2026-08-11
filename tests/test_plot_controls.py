@@ -9,6 +9,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
+from gui.page_plot import _COLORMAP_OPTIONS, _colormap_preview_html
 from qeplotter.api import plot_from_file
 from qeplotter.plotting.dos import plot_dos
 from qeplotter.plotting.fatbands import plot_fatbands
@@ -45,6 +46,20 @@ class PlotControlTests(unittest.TestCase):
         self.assertEqual(ax.get_ylabel(), "Custom density")
         self.assertIsNone(ax.get_legend())
         self.assertFalse(any(line.get_visible() for line in ax.get_xgridlines()))
+
+    def test_gui_offers_a_broad_set_of_valid_colormaps(self):
+        self.assertGreaterEqual(len(_COLORMAP_OPTIONS), 30)
+        self.assertEqual(len(_COLORMAP_OPTIONS), len(set(_COLORMAP_OPTIONS)))
+        for cmap_name in _COLORMAP_OPTIONS:
+            self.assertIsNotNone(plt.get_cmap(cmap_name))
+
+    def test_colormap_preview_distinguishes_discrete_and_continuous_maps(self):
+        categorical = _colormap_preview_html("tab10")
+        continuous = _colormap_preview_html("viridis")
+        self.assertIn("linear-gradient", categorical)
+        self.assertIn("10 discrete colours", categorical)
+        self.assertIn("low → high", continuous)
+        self.assertGreater(categorical.count("#"), continuous.count("#"))
 
     def test_empty_custom_text_preserves_automatic_labels(self):
         with tempfile.TemporaryDirectory() as directory:
