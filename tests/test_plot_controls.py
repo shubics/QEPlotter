@@ -11,6 +11,7 @@ import numpy as np
 
 from gui.page_plot import _COLORMAP_OPTIONS, _colormap_preview_html
 from qeplotter.api import plot_from_file
+from qeplotter.plotting.bands import plot_band
 from qeplotter.plotting.dos import plot_dos
 from qeplotter.plotting.fatbands import plot_fatbands
 from qeplotter.plotting.style import colormap_colors, figure_size
@@ -71,6 +72,22 @@ class PlotControlTests(unittest.TestCase):
         self.assertEqual(len(colormap_colors("tab10", 4)), 4)
         self.assertEqual(len(set(colormap_colors("tab10", 4))), 4)
         self.assertEqual(len(set(colormap_colors("viridis", 4))), 4)
+
+    @patch("qeplotter.plotting.bands.read_band_xdistances")
+    def test_normal_band_keeps_solid_black_lines(self, mocked_read_bands):
+        mocked_read_bands.return_value = (
+            np.array([0.0, 1.0]),
+            np.array([[-1.0, 0.5], [0.2, 1.0]]),
+            [0.0, 1.0],
+            ["G", "X"],
+            [(0, 1)],
+        )
+        with patch("matplotlib.pyplot.show"):
+            plot_band("bands.gnu", "kpath.in", cmap_name="plasma")
+
+        ax = plt.gca()
+        for line in ax.lines:
+            self.assertEqual(matplotlib.colors.to_rgba(line.get_color()), (0, 0, 0, 1))
 
     def test_empty_custom_text_preserves_automatic_labels(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -498,33 +498,41 @@ def render_dashboard():
             args['legend_title'] = custom_legend_title.strip() or None
 
             st.markdown("##### Colors & Visuals")
-            if fatband_mode == 'layer':
-                default_cmap = 'coolwarm'
-            elif uses_colour_scale:
-                default_cmap = 'viridis'
-            elif pt in ('pdos', 'overlay_band') or (
-                pt == 'band' and args.get('band_mode', 'normal') != 'normal'
-            ):
-                default_cmap = 'tab10'
+            normal_band = (
+                pt == 'band' and args.get('band_mode', 'normal') == 'normal'
+            )
+            if normal_band:
+                args['cmap_name'] = 'tab10'
+                st.caption(
+                    "Normal band mode keeps the standard solid black lines. "
+                    "Select a projected band mode to colour the bands."
+                )
             else:
-                default_cmap = 'viridis'
+                if fatband_mode == 'layer':
+                    default_cmap = 'coolwarm'
+                elif uses_colour_scale:
+                    default_cmap = 'viridis'
+                elif pt in ('pdos', 'overlay_band') or pt == 'band':
+                    default_cmap = 'tab10'
+                else:
+                    default_cmap = 'viridis'
 
-            args['cmap_name'] = st.selectbox(
-                "Colormap",
-                _COLORMAP_OPTIONS,
-                index=_COLORMAP_OPTIONS.index(default_cmap),
-                format_func=_colormap_option_label,
-                help=(
-                    "Available for every plot type. Single curves take a "
-                    "representative colour; multiple series sample distinct "
-                    "colours; continuous plots use the full scale."
-                ),
-                **style_change,
-            )
-            st.markdown(
-                _colormap_preview_html(args['cmap_name']),
-                unsafe_allow_html=True,
-            )
+                args['cmap_name'] = st.selectbox(
+                    "Colormap",
+                    _COLORMAP_OPTIONS,
+                    index=_COLORMAP_OPTIONS.index(default_cmap),
+                    format_func=_colormap_option_label,
+                    help=(
+                        "Single curves take a representative colour; multiple "
+                        "series sample distinct colours; continuous plots use "
+                        "the full scale."
+                    ),
+                    **style_change,
+                )
+                st.markdown(
+                    _colormap_preview_html(args['cmap_name']),
+                    unsafe_allow_html=True,
+                )
 
             if pt == "fatbands":
                 c_adv1, c_adv2 = st.columns(2)

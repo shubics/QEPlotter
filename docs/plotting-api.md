@@ -55,7 +55,7 @@ QEPlotter's automatic labels.
 | `s_min` | `float` | `10` | Minimum bubble marker size. |
 | `s_max` | `float` | `100` | Maximum bubble marker size. |
 | `weight_threshold` | `float` | `0.01` | Ignore projection weights below this threshold. |
-| `cmap_name` | `str` | `'tab10'` | Matplotlib colormap used directly by Band, DOS, PDOS, Overlay, and Fatbands plots. |
+| `cmap_name` | `str` | `'tab10'` | Matplotlib colormap used by projected Band, DOS, PDOS, Overlay, and Fatbands plots. Normal bands retain solid black lines. |
 | `show_band_gap` | `bool` | `False` | Detect and annotate VBM/CBM. |
 | `scf_file` | `str` | `None` | Optional `scf.out` reference for gap detection. |
 
