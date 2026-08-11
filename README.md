@@ -89,6 +89,23 @@ qep.plot_from_file(
 
 ---
 
+## 🖥️ Interface Preview
+
+The views below were generated from the included
+[2H monolayer MoS₂ structure](examples/structures/MoS2_monolayer.vasp).
+QEPlotter identifies its `P-6m2` symmetry, constructs the conventional
+high-symmetry band path, and reduces a `6 × 6 × 1` mesh to seven irreducible
+k-points.
+
+<p align="center">
+  <img src="docs/images/mos2-structure-explorer.jpg" width="49%" alt="MoS2 monolayer in the QEPlotter crystal structure explorer">
+  <img src="docs/images/mos2-kpath.jpg" width="49%" alt="MoS2 high-symmetry path and Brillouin zone in QEPlotter">
+</p>
+
+<p align="center">
+  <img src="docs/images/mos2-irreducible-kgrid.jpg" width="760" alt="MoS2 irreducible 6 by 6 by 1 k-grid in QEPlotter">
+</p>
+
 ## 📁 Project Structure
 
 ```
@@ -204,9 +221,9 @@ wavefunctions and is intentionally reported as a separate future capability.
 Example: for the four H `1s` orbitals in the tetrahedral CH₄ validation
 structure, the complete 24-operation `T_d` analysis gives:
 
-\[
+$$
 \Gamma_{\mathrm{H\,1s}}=A_1\oplus T_2 .
-\]
+$$
 
 The automated suite also covers diamond Si, rocksalt NaCl, hcp Mg,
 wurtzite ZnO, 2H monolayer MoS₂, and the finite-group engine for all 32

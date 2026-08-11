@@ -41,13 +41,13 @@ so the selected basis remains closed under every operation.
 At Γ, the translational Bloch phase is one. Operations with the same rotational
 part can therefore be represented by one point-group operation.
 
-ASE stores real-space lattice vectors as the rows of \(A\). Fractional
+ASE stores real-space lattice vectors as the rows of $A$. Fractional
 rotations are converted to Cartesian form using:
 
-\[
+$$
 R_\mathrm{cart}
 =A^\mathrm{T}R_\mathrm{frac}A^{-\mathrm{T}}.
-\]
+$$
 
 A polar decomposition removes insignificant floating-point loss of
 orthogonality.
@@ -57,19 +57,19 @@ orthogonality.
 A symmetry operation permutes the selected atoms and transforms the local
 orbital block. QEPlotter uses:
 
-\[
+$$
 D_s(g)=1,\qquad
 D_p(g)=R_\mathrm{cart}(g).
-\]
+$$
 
 Atomic displacements use the same polar-vector block as the `p` basis.
 
 The five real `d` functions are represented as normalised symmetric traceless
 tensors. Each tensor transforms as:
 
-\[
+$$
 Q'=RQR^\mathrm{T}.
-\]
+$$
 
 The component order is:
 
@@ -81,9 +81,9 @@ dz², dx²-y², dxy, dxz, dyz
 
 For a selected orbital basis, the character is:
 
-\[
+$$
 \chi_\Gamma(g)=\operatorname{Tr}[D_\Gamma(g)].
-\]
+$$
 
 An atom moved to another site contributes zero to the trace. An atom left on
 its site contributes the trace of its orbital transformation block. Characters
@@ -107,20 +107,20 @@ point groups.
 
 ### 6. Irreducible decomposition
 
-The multiplicity of irrep \(\alpha\) is:
+The multiplicity of irrep $\alpha$ is:
 
-\[
+$$
 n_\alpha
 =\frac{1}{|G|}
 \sum_C |C|\,\chi_\Gamma(C)\chi_\alpha(C)^*.
-\]
+$$
 
 A result is accepted only if every multiplicity is an integer and:
 
-\[
+$$
 \sum_\alpha n_\alpha d_\alpha
 =\dim(\Gamma).
-\]
+$$
 
 This dimension check prevents a missing symmetry class from producing a
 plausible-looking but incomplete result.
@@ -129,11 +129,11 @@ plausible-looking but incomplete result.
 
 SALCs are generated using the projection operator:
 
-\[
+$$
 P_\alpha
 =\frac{d_\alpha}{|G|}
 \sum_g\chi_\alpha(g)^*D_\Gamma(g).
-\]
+$$
 
 The projected subspace is orthonormalised before its coefficients are shown.
 Different bases within a degenerate irrep are equivalent rotations of the same

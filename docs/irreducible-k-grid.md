@@ -31,7 +31,11 @@ mapping, representative selection, and weighting.
 
 Fractional points use the reciprocal basis of the uploaded cell:
 
-`B = 2π(A⁻¹)ᵀ`, with row-vector convention `k_cart = k_frac · B`.
+$$
+B = 2\pi(A^{-1})^\mathrm{T},
+\qquad
+\mathbf{k}_\mathrm{cart}=\mathbf{k}_\mathrm{frac}B.
+$$
 
 The page exports:
 
