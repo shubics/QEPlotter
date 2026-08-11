@@ -44,7 +44,8 @@ def plot_from_file(
     sub_orb=False,
     vertical=False,
     show_band_gap=False,
-    scf_file=None
+    scf_file=None,
+    data_note=None,
 ):
     """
     High-level wrapper for plotting Quantum ESPRESSO band, DOS, PDOS, and fatbands in one function.
@@ -74,7 +75,7 @@ def plot_from_file(
             dos_file=dos_file,
             x_range=x_range,
             show_band_gap=show_band_gap,
-            scf_file=scf_file
+            scf_file=scf_file,
         )
     elif pt == 'dos':
         plot_dos(
@@ -132,7 +133,8 @@ def plot_from_file(
             sub_orb=sub_orb,
             x_range=x_range,
             show_band_gap=show_band_gap,
-            scf_file=scf_file
+            scf_file=scf_file,
+            data_note=data_note,
         )
     else:
         raise ValueError("Use 'band','dos','pdos', 'overlay_band', or 'fatbands' for plot_type")

@@ -42,6 +42,17 @@ def _layer_material_labels(atom_names, layer_assignment):
         return f"{bottom} · lower", f"{top} · upper"
     return bottom, top
 
+
+def _layer_plot_title(bottom_material, top_material):
+    """Build a concise, material-aware title for a bilayer band plot."""
+    bottom_formula = bottom_material.split(" · ", 1)[0]
+    top_formula = top_material.split(" · ", 1)[0]
+    if bottom_formula == top_formula:
+        material_name = f"{bottom_formula} bilayer"
+    else:
+        material_name = f"{bottom_formula} / {top_formula}"
+    return f"{material_name} · layer-resolved fatbands"
+
 def plot_fatbands(
     fatband_dir,
     kpath_file,
@@ -69,7 +80,8 @@ def plot_fatbands(
         sub_orb=False,
         x_range=None,
         show_band_gap=False,
-        scf_file=None
+        scf_file=None,
+        data_note=None,
 ):
     """
       Plot fatbands from Quantum ESPRESSO data.
@@ -124,6 +136,9 @@ def plot_fatbands(
         Output resolution (dots per inch).
     layer_assignment : dict, optional
         Only for 'layer' mode. Dictionary mapping atom names to 'top' or 'bottom' layer.
+    data_note : str, optional
+        Provenance or status note printed below the plot. Use this to identify
+        demonstration, synthetic, or otherwise unverified data explicitly.
     save_dir : str, optional
         Directory to save the plot. Default "saved".
     savefig : str, optional
@@ -603,8 +618,9 @@ def plot_fatbands(
             ax1.set_ylim(y_range)
 
         if mode == 'layer':
-
-            ax1.set_title('Layer-resolved fatbands', pad=12)
+            ax1.set_title(
+                _layer_plot_title(bottom_material, top_material), pad=12
+            )
 
         else:
 
@@ -683,7 +699,14 @@ def plot_fatbands(
             gap_info = _find_band_gap(x_dist, _be, fermi_level, shift_fermi, scf_file=scf_file)
             _annotate_band_gap(ax1, gap_info)
 
-        plt.tight_layout()
+        if data_note:
+            fig.text(
+                0.01, 0.01, str(data_note), ha='left', va='bottom',
+                fontsize=7.5, color='#666666',
+            )
+            fig.tight_layout(rect=(0, 0.035, 1, 1))
+        else:
+            fig.tight_layout()
         if savefig:
             if not os.path.exists(save_dir):
                 os.makedirs(save_dir)

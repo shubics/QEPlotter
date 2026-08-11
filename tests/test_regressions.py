@@ -15,7 +15,10 @@ from qeplotter.api import launch_gui
 from qeplotter.converters.soc import _cg_prob
 from qeplotter.core.io import read_band_xdistances
 from qeplotter.plotting.dos import plot_pdos_dir
-from qeplotter.plotting.fatbands import _layer_material_labels
+from qeplotter.plotting.fatbands import (
+    _layer_material_labels,
+    _layer_plot_title,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -80,8 +83,8 @@ class GeneralRegressionTests(unittest.TestCase):
     def test_layer_legend_uses_material_formulas(self):
         atom_names = ["W1", "Mo2", "S3", "S4", "S5", "S6"]
         assignment = {
-            "W1": "bottom", "S3": "bottom", "S4": "bottom",
-            "Mo2": "top", "S5": "top", "S6": "top",
+            "W1": "bottom", "S4": "bottom", "S6": "bottom",
+            "Mo2": "top", "S3": "top", "S5": "top",
         }
         self.assertEqual(
             _layer_material_labels(atom_names, assignment),
@@ -97,6 +100,16 @@ class GeneralRegressionTests(unittest.TestCase):
         self.assertEqual(
             _layer_material_labels(atom_names, assignment),
             ("MoS₂ · lower", "MoS₂ · upper"),
+        )
+
+    def test_layer_plot_title_names_hetero_and_homobilayers(self):
+        self.assertEqual(
+            _layer_plot_title("WS₂", "MoS₂"),
+            "WS₂ / MoS₂ · layer-resolved fatbands",
+        )
+        self.assertEqual(
+            _layer_plot_title("MoS₂ · lower", "MoS₂ · upper"),
+            "MoS₂ bilayer · layer-resolved fatbands",
         )
 
     def test_uploaded_filename_cannot_escape_session_directory(self):

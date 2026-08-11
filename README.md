@@ -96,7 +96,10 @@ The views below were generated from the included
 QEPlotter identifies its `P-6m2` symmetry, constructs the conventional
 high-symmetry band path, and reduces a `6 × 6 × 1` mesh to seven irreducible
 k-points. The symmetry view shows the calculated Mo d-orbital representation
-at Γ. The final plot uses the included WS₂/MoS₂ heterobilayer projection data.
+at Γ. The final plot uses a historical QE-format WS₂/MoS₂ example bundled with
+the repository. Its original calculation inputs and provenance are not included,
+so the figure is labelled as example data rather than presented as a validated
+scientific result. See the [dataset provenance note](examples/nsp_demo/README.md).
 
 <p align="center">
   <img src="docs/images/mos2-structure-explorer.jpg" width="49%" alt="MoS2 monolayer in the QEPlotter crystal structure explorer">
@@ -309,6 +312,7 @@ The `plot_from_file` function is the main entry point. Below is the **exhaustive
 | **`highlight_channel`** | `str/tuple` | `None` | Atoms/orbitals to highlight. Ex: `'Mo'` or `('Mo', 'S')`. |
 | **`dual`** | `bool` | `False` | Two-channel comparison in Line mode. |
 | **`layer_assignment`** | `dict` | `None` | Layer Mode: map every atom to `'top'` or `'bottom'`; material formulas are inferred for the colour scale. |
+| **`data_note`** | `str` | `None` | Optional provenance/status footer. Mark synthetic, demonstration, or unverified data directly on the figure. |
 | **`s_min`** | `float` | `10` | Minimum marker size (bubble plots). |
 | **`s_max`** | `float` | `100` | Maximum marker size (bubble plots). |
 | **`weight_threshold`** | `float` | `0.01` | Ignore orbital weights below this value. |
@@ -488,8 +492,8 @@ plot_from_file(
 from qeplotter import plot_from_file
 
 layer_map = {
-    'W1': 'bottom', 'S3': 'bottom', 'S4': 'bottom',
-    'Mo2': 'top', 'S5': 'top', 'S6': 'top',
+    'W1': 'bottom', 'S4': 'bottom', 'S6': 'bottom',
+    'Mo2': 'top', 'S3': 'top', 'S5': 'top',
 }
 
 plot_from_file(
@@ -500,12 +504,20 @@ plot_from_file(
     fatbands_mode='layer',
     layer_assignment=layer_map,
     cmap_name='coolwarm',
+    fermi_level=-5.33,
+    shift_fermi=True,
     y_range=(-4, 4),
+    data_note=(
+        'Bundled QE-format example data · '
+        'original calculation provenance not included'
+    ),
 )
 ```
 
 The colour-bar endpoints are derived automatically from `layer_map`: `WS₂` at
-the lower-layer end and `MoS₂` at the upper-layer end.
+the lower-layer end and `MoS₂` at the upper-layer end. The same material names
+also appear in the plot title. For publication or scientific comparison, use
+your own traceable QE outputs and record the calculation details in `data_note`.
 
 <p align="center">
   <img src="examples/nsp_demo/outputs/nsp_layer.png" width="700" alt="WS2 and MoS2 layer-resolved fatbands">

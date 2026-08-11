@@ -247,6 +247,14 @@ def render_dashboard():
                                     f"Plot colour scale: **{bottom_name}** → "
                                     f"mixed → **{top_name}**"
                                 )
+                        args['data_note'] = st.text_input(
+                            "Data source note (optional)",
+                            help=(
+                                "Printed below the figure. Identify synthetic, "
+                                "demonstration, or unverified data explicitly."
+                            ),
+                            placeholder="e.g. QE calculation: PBE, 12×12×1 mesh",
+                        )
 
                 # Dynamic Highlight Channels List
                 atoms, elements, orbitals, exp_orbs = get_available_channels(paths.get('fatband_dir'))
