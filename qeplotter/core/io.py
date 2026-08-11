@@ -261,7 +261,7 @@ def read_fatband_files(fatband_dir, spin=False, sub_orb=False):
 
         # choose weight columns
         if not sub_orb:
-            # 1) Klasik toplam orbital ağırlığı
+            # 1) Conventional total orbital weight
             w = data[:, 2]
             labels.append((atom_label, orb))
             W_list.append((ik, E, w))
@@ -269,25 +269,25 @@ def read_fatband_files(fatband_dir, spin=False, sub_orb=False):
         else:
             ncols = data.shape[1]
 
-            # ---------- SOC (spin=True) dosyaları ----------
+            # ---------- SOC files (spin=True) ----------
             if spin:
-                # Dosya adından j değerini çek (örn. "_j1.5")
+                # Extract the j value from the filename (for example, "_j1.5")
                 m_j = re.search(r'_j([0-9.]+)', base)
                 jtag = f"_j{m_j.group(1)}" if m_j else ""
 
-                # k-indeksi, E ve LDOS -> ilk 3 sütun
+                # k index, energy, and LDOS occupy the first three columns
                 pdos_cols = list(range(3, ncols))
                 nsub = len(pdos_cols)
 
-                # Varsayılan etiketler (QE sırası: ↑↑ ↓↓ ↑↓_Re ↑↓_Im)
+                # Default labels follow the QE order: ↑↑, ↓↓, ↑↓_Re, ↑↓_Im
                 default_names = ['upup', 'downdown', 'updown_re', 'updown_im']
                 subs = [f"{orb}{jtag}_{default_names[i] if i < 4 else f'c{i + 1}'}"
                         for i in range(nsub)]
                 cols = pdos_cols
 
-            # ---------- SOC'suz (spin=False) dosyalar ----------
+            # ---------- Non-SOC files (spin=False) ----------
             else:
-                nsub = ncols - 2  # LDOS sonrası sütun sayısı
+                nsub = ncols - 2  # Number of columns following LDOS
 
                 if orb == 's' and nsub >= 1:
                     cols, subs = ([3], ['s']) if ncols >= 4 else ([2], ['s'])
@@ -299,10 +299,10 @@ def read_fatband_files(fatband_dir, spin=False, sub_orb=False):
                     cols = [3, 4, 5, 6, 7][:nsub]
                     subs = ['dxy', 'dyz', 'dz2', 'dxz', 'dx2-y2'][:nsub]
 
-                else:  # güvenli geriye dönüş
+                else:  # Safe fallback
                     cols, subs = [2], [orb]
 
-            # --------------- Sütunları kaydet ----------------
+            # --------------- Store the selected columns ----------------
             for col, sub in zip(cols, subs):
                 w = data[:, col]
                 labels.append((atom_label, sub))

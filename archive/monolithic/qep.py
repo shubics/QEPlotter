@@ -382,7 +382,7 @@ def read_fatband_files(fatband_dir,spin=False,sub_orb=False):
 
         # choose weight columns
         if not sub_orb:
-            # 1) Klasik toplam orbital ağırlığı
+            # 1) Conventional total orbital weight
             w = data[:, 2]
             labels.append((atom_label, orb))
             W_list.append((ik, E, w))
@@ -390,25 +390,25 @@ def read_fatband_files(fatband_dir,spin=False,sub_orb=False):
         else:
             ncols = data.shape[1]
 
-            # ---------- SOC (spin=True) dosyaları ----------
+            # ---------- SOC files (spin=True) ----------
             if spin:
-                # Dosya adından j değerini çek (örn. "_j1.5")
+                # Extract the j value from the filename (for example, "_j1.5")
                 m_j = re.search(r'_j([0-9.]+)', base)
                 jtag = f"_j{m_j.group(1)}" if m_j else ""
 
-                # k-indeksi, E ve LDOS -> ilk 3 sütun
+                # k index, energy, and LDOS occupy the first three columns
                 pdos_cols = list(range(3, ncols))
                 nsub = len(pdos_cols)
 
-                # Varsayılan etiketler (QE sıra­sı: ↑↑ ↓↓ ↑↓_Re ↑↓_Im)
+                # Default labels follow the QE order: ↑↑, ↓↓, ↑↓_Re, ↑↓_Im
                 default_names = ['upup', 'downdown', 'updown_re', 'updown_im']
                 subs = [f"{orb}{jtag}_{default_names[i] if i < 4 else f'c{i + 1}'}"
                         for i in range(nsub)]
                 cols = pdos_cols
 
-            # ---------- SOC’suz (spin=False) dosyalar ----------
+            # ---------- Non-SOC files (spin=False) ----------
             else:
-                nsub = ncols - 2  # LDOS sonrası sütun sayısı
+                nsub = ncols - 2  # Number of columns following LDOS
 
                 if orb == 's' and nsub >= 1:
                     cols, subs = ([3], ['s']) if ncols >= 4 else ([2], ['s'])
@@ -420,10 +420,10 @@ def read_fatband_files(fatband_dir,spin=False,sub_orb=False):
                     cols = [3, 4, 5, 6, 7][:nsub]
                     subs = ['dxy', 'dyz', 'dz2', 'dxz', 'dx2-y2'][:nsub]
 
-                else:  # güvenli geriye dönüş
+                else:  # Safe fallback
                     cols, subs = [2], [orb]
 
-            # --------------- Sütunları kaydet ----------------
+            # --------------- Store the selected columns ----------------
             for col, sub in zip(cols, subs):
                 w = data[:, col]
                 labels.append((atom_label, sub))
@@ -731,7 +731,7 @@ def overlay_band_plot(
     plt.tight_layout()
     plt.title("Overlayed Band Structures")
 
-    # --- Kaydetme kısmı ---
+    # --- Output filename and save path ---
     def sanitize(s):
         return re.sub(r'\W+', '_', s).strip('_')
     
@@ -1947,7 +1947,7 @@ def plot_from_file(
     dual=False,
     band_mode='normal',
     cmap_name='tab10',
-    band_file2=None,  # EKLEDİK!
+    band_file2=None,  # Optional second band input for overlay plots
     kpath_file2=None,
         color1='red',
         color2='blue',
@@ -2402,7 +2402,9 @@ def parse_qe_block(lines: Sequence[str]) -> Tuple[np.ndarray, List[str], np.ndar
         if ibrav is None:
             ibrav = _guess_ibrav_from_celldm(celldm)
             if ibrav is None:
-                raise ValueError("Ne CELL_PARAMETERS var ne ibrav! (celldm kombinasyonu da yetersiz)")
+                raise ValueError(
+                    "Neither CELL_PARAMETERS nor a usable ibrav/celldm definition was found"
+                )
         cell = ibrav2cell(ibrav, celldm)
 
     # frac
@@ -2415,7 +2417,7 @@ def parse_qe_block(lines: Sequence[str]) -> Tuple[np.ndarray, List[str], np.ndar
         cart = coords
         frac = cart @ np.linalg.inv(cell)
     elif atpos_units == 'cartesian':
-        # eğer CELL_PARAMETERS yoksa ölçek tahmini:
+        # Infer the Cartesian scale when CELL_PARAMETERS is unavailable.
         if cell_parameters is None and '1' in celldm and cell_units == 'alat':
             cart = coords * celldm.get(1,1.0) * BOHR_TO_ANGSTROM
         elif cell_parameters is None and cell_units == 'bohr':
@@ -2424,19 +2426,19 @@ def parse_qe_block(lines: Sequence[str]) -> Tuple[np.ndarray, List[str], np.ndar
             cart = coords
         frac = cart @ np.linalg.inv(cell)
     else:
-        raise ValueError(f"Desteklenmeyen ATOMIC_POSITIONS birimi: {atpos_units}")
+        raise ValueError(f"Unsupported ATOMIC_POSITIONS unit: {atpos_units}")
 
     return cell, species, frac
 
 def _guess_ibrav_from_celldm(cd: dict) -> Union[int,None]:
-    """celldm kombinasyonundan olası ibrav tahmini."""
+    """Infer a likely ibrav value from the available celldm parameters."""
     if 1 in cd and 3 in cd and len(cd)==2:
         return 4  # hex
     if 1 in cd and 2 in cd and 3 in cd and len(cd)==3:
         return 8  # simple orthorhombic
     if 1 in cd and len(cd)==1:
         return 1  # cubic
-    # daha fazlasını istersen ekle
+    # Additional combinations can be added when their mapping is unambiguous.
     return None
 
 def ibrav2cell(ibrav: int, cd: dict) -> np.ndarray:
@@ -2481,7 +2483,7 @@ def ibrav2cell(ibrav: int, cd: dict) -> np.ndarray:
                          [c*cosa, c*(cosb-cosa*cosg)/sing,
                           c*np.sqrt(1-cosa**2-((cosb-cosa*cosg)/sing)**2)]])
     else:
-        raise ValueError(f"ibrav={ibrav} tanımlı değil.")
+        raise ValueError(f"ibrav={ibrav} is not implemented")
     return cell*BOHR_TO_ANGSTROM
 
 
@@ -2719,8 +2721,8 @@ def _orb_sym(l: int) -> str:
 
 
 def _make_filename(outdir: pathlib.Path, key: Tuple) -> pathlib.Path:
-    atom, elem, wfc, l = key[:4]  # her zaman bu dördü var
-    j = key[4] if len(key) > 4 else None  # j varsa al, yoksa None
+    atom, elem, wfc, l = key[:4]  # These four fields are always present.
+    j = key[4] if len(key) > 4 else None  # j is optional.
 
     if j is not None:
         jstr = f"{j:.1f}".rstrip("0").rstrip(".")
