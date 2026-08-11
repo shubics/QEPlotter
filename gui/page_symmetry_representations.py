@@ -8,9 +8,13 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from gui.io_helpers import save_file
+from gui.theme import remember_tab, remembered_tabs
 from qeplotter.structure import build_3dmol_html, read_structure
 from qeplotter.structure.bonds import atom_labels
 from qeplotter.symmetry import GammaRepresentationAnalyzer, SymmetryAnalysisError
+
+
+_SYMREP_TAB_STATE = "symmetry_representation_tab"
 
 
 @st.cache_resource(show_spinner=False)
@@ -117,6 +121,8 @@ def _render_salcs(analyzer, result):
             type="primary",
             help="Large orbital bases are generated on demand to keep the "
                  "rest of the page responsive.",
+            on_click=remember_tab,
+            args=(_SYMREP_TAB_STATE, "SALCs"),
         ):
             st.info(
                 f"This {result['dimension']}-dimensional basis is large. "
@@ -130,7 +136,11 @@ def _render_salcs(analyzer, result):
     choices = {
         _display_irrep(row): row["gamma"] for row in result["decomposition"]
     }
-    selected = st.selectbox("Irrep to inspect", list(choices), key="salc_irrep")
+    selected = st.selectbox(
+        "Irrep to inspect", list(choices), key="salc_irrep",
+        on_change=remember_tab,
+        args=(_SYMREP_TAB_STATE, "SALCs"),
+    )
     expressions = result["salcs"][choices[selected]]
     visible = expressions[:24]
     st.dataframe(
@@ -158,7 +168,9 @@ def _render_matching(analyzer, result):
         rows = analyzer.compatibility(result)
     frame = pd.DataFrame(rows)
     allowed_only = st.toggle(
-        "Show symmetry-allowed matches only", value=True, key="allowed_only"
+        "Show symmetry-allowed matches only", value=True, key="allowed_only",
+        on_change=remember_tab,
+        args=(_SYMREP_TAB_STATE, "Orbital matching"),
     )
     if allowed_only:
         frame = frame[frame["symmetry allowed"] == "Yes"]
@@ -275,13 +287,16 @@ def render_symmetry_representations():
     m3.metric("Primitive atoms", len(analyzer.atoms))
     m4.metric("Representation size", result["dimension"])
 
-    tabs = st.tabs([
-        "Result",
-        "Character calculation",
-        "SALCs",
-        "Orbital matching",
-        "Method & limits",
-    ])
+    tabs = remembered_tabs(
+        [
+            "Result",
+            "Character calculation",
+            "SALCs",
+            "Orbital matching",
+            "Method & limits",
+        ],
+        _SYMREP_TAB_STATE,
+    )
     with tabs[0]:
         _render_decomposition(result)
         st.caption(

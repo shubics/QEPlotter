@@ -12,6 +12,7 @@ import re
 from functools import partial
 
 from gui.io_helpers import save_file
+from gui.theme import remember_tab, remembered_tabs
 from qeplotter.structure import (
     read_structure,
     structure_summary,
@@ -22,6 +23,7 @@ from qeplotter.structure import (
 )
 
 _SUBSCRIPT = str.maketrans("0123456789", "₀₁₂₃₄₅₆₇₈₉")
+_STRUCTURE_TAB_STATE = "structure_analysis_tab"
 
 
 def _display_formula(formula):
@@ -65,6 +67,9 @@ def _selected_index(key, frame):
 
 def _activate_selection(kind):
     st.session_state.structure_active_selection = kind
+    remember_tab(
+        _STRUCTURE_TAB_STATE, "Bonds" if kind == "bond" else "Angles"
+    )
 
 
 def _clear_selection():
@@ -127,7 +132,9 @@ def _render_summary(atoms):
 def _render_symmetry(atoms):
     symprec = st.slider("Symmetry tolerance (Å)", 1e-4, 1e-1, 1e-3,
                         format="%.4f", key="sym_tol",
-                        help="Larger values are more forgiving of small distortions.")
+                        help="Larger values are more forgiving of small distortions.",
+                        on_change=remember_tab,
+                        args=(_STRUCTURE_TAB_STATE, "Symmetry"))
     sg = get_spacegroup(atoms, symprec=symprec)
     if "error" in sg:
         st.warning(f"Could not determine symmetry: {sg['error']}")
@@ -314,7 +321,10 @@ def render_structure():
         m1.metric("Detected bonds", len(live_bonds))
         m2.metric("All angles", len(live_angles))
         st.caption("The counters and the Bonds/Angles tables update immediately with the tolerance.")
-        tabs = st.tabs(["Summary", "Symmetry", "Bonds", "Angles", "Stacking"])
+        tabs = remembered_tabs(
+            ["Summary", "Symmetry", "Bonds", "Angles", "Stacking"],
+            _STRUCTURE_TAB_STATE,
+        )
         with tabs[0]:
             _render_summary(atoms)
         with tabs[1]:

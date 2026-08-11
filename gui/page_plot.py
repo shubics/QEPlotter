@@ -9,6 +9,7 @@ from matplotlib.colors import to_hex
 
 from qeplotter.api import plot_from_file
 from gui.io_helpers import save_file, get_fermi_from_scf, get_available_channels
+from gui.theme import remember_tab, remembered_tabs
 from qeplotter.plotting.fatbands import _layer_material_labels
 
 
@@ -36,6 +37,7 @@ _COLORMAP_OPTIONS = tuple(
     name for names in _COLORMAP_GROUPS.values() for name in names
 )
 _CATEGORICAL_COLORMAPS = frozenset(_COLORMAP_GROUPS["Categorical"])
+_PLOT_TAB_STATE = "plot_configuration_tab"
 
 
 def _colormap_group(cmap_name):
@@ -94,9 +96,14 @@ def render_dashboard():
     # --- STEP 1: PLOT TYPE SELECTION ---
     c_type, c_space = st.columns([2, 3])
     with c_type:
-        plot_type_ui = st.selectbox("Select Plot Type",
-                                    ["Band Structure", "Fatbands (Projected)", "Total DOS", "PDOS Only",
-                                     "Overlay Comparison"])
+        plot_type_ui = st.selectbox(
+            "Select Plot Type",
+            ["Band Structure", "Fatbands (Projected)", "Total DOS", "PDOS Only",
+             "Overlay Comparison"],
+            key="plot_type_ui",
+            on_change=remember_tab,
+            args=(_PLOT_TAB_STATE, "Data & Files"),
+        )
 
     p_map = {
         "Band Structure": "band", "Fatbands (Projected)": "fatbands",
@@ -109,9 +116,18 @@ def render_dashboard():
     col_inputs, col_preview = st.columns([1, 1.5])
 
     with col_inputs:
-        tab_data, tab_settings, tab_style = st.tabs(
-            ["Data & Files", "Core Settings", "Plot Styling"]
+        tab_data, tab_settings, tab_style = remembered_tabs(
+            ["Data & Files", "Core Settings", "Plot Styling"],
+            _PLOT_TAB_STATE,
         )
+        settings_change = {
+            "on_change": remember_tab,
+            "args": (_PLOT_TAB_STATE, "Core Settings"),
+        }
+        style_change = {
+            "on_change": remember_tab,
+            "args": (_PLOT_TAB_STATE, "Plot Styling"),
+        }
 
         # --- A. FILE INPUTS ---
         with tab_data:
@@ -159,7 +175,7 @@ def render_dashboard():
         with tab_settings:
             # Auto-Fermi
             st.markdown("##### Fermi Energy")
-            f_scf = st.file_uploader("SCF Output (auto-detect Fermi)", type=["out", "txt"], key="u_scf", help="Upload scf.out to auto-read Fermi energy")
+            f_scf = st.file_uploader("SCF Output (auto-detect Fermi)", type=["out", "txt"], key="u_scf", help="Upload scf.out to auto-read Fermi energy", **settings_change)
             auto_fermi = 0.0
             if f_scf:
                 scf_path = save_file(f_scf)
@@ -171,22 +187,22 @@ def render_dashboard():
                 else:
                     st.warning("Could not find Fermi energy in this file.")
             c_f1, c_f2 = st.columns(2)
-            args['fermi_level'] = c_f1.number_input("Fermi Level (eV)", value=auto_fermi, format="%.4f", help="Absolute Fermi energy to shift plots relative to")
-            args['shift_fermi'] = c_f2.checkbox("Shift E_F to 0", value=True, help="Shift energy axis so Fermi level is at 0")
+            args['fermi_level'] = c_f1.number_input("Fermi Level (eV)", value=auto_fermi, format="%.4f", help="Absolute Fermi energy to shift plots relative to", **settings_change)
+            args['shift_fermi'] = c_f2.checkbox("Shift E_F to 0", value=True, help="Shift energy axis so Fermi level is at 0", **settings_change)
 
             if pt in ["band", "fatbands"]:
                 st.markdown("##### Calculation Properties")
                 c_prop1, c_prop2 = st.columns(2)
-                args['spin'] = c_prop1.checkbox("Spin Polarized", help="Check if calculation used nspin=2 or noncolin=true")
-                args['sub_orb'] = c_prop2.checkbox("Sub-Orbital Analysis", help="Check if you want m-resolved or SOC states")
+                args['spin'] = c_prop1.checkbox("Spin Polarized", help="Check if calculation used nspin=2 or noncolin=true", **settings_change)
+                args['sub_orb'] = c_prop2.checkbox("Sub-Orbital Analysis", help="Check if you want m-resolved or SOC states", **settings_change)
 
             if pt == "pdos":
                 st.markdown("##### PDOS Settings")
                 args['pdos_mode'] = st.selectbox("PDOS Grouping Mode", ["atomic", "orbital", "element_orbital"],
-                    help="How to group projected orbitals: by atom element, orbital type, or element-orbital pair")
+                    help="How to group projected orbitals: by atom element, orbital type, or element-orbital pair", **settings_change)
 
             if pt == "band":
-                bm = st.selectbox("Band Mode", ["normal", "atomic", "orbital", "element_orbital", "most"], help="Mode for coloring bands")
+                bm = st.selectbox("Band Mode", ["normal", "atomic", "orbital", "element_orbital", "most"], help="Mode for coloring bands", **settings_change)
                 args['band_mode'] = bm
                 if bm != 'normal':
                     st.info("Colored bands require Fatband/PDOS files in the Data tab.")
@@ -196,7 +212,7 @@ def render_dashboard():
             if pt == "fatbands":
                 st.markdown("##### Fatband Projection")
 
-                fb_style = st.selectbox("Plot Style", ["Scatter (Bubble)", "Lines (o_)", "Heatmap (heat_)"], help="Visual style for projecting orbital weights")
+                fb_style = st.selectbox("Plot Style", ["Scatter (Bubble)", "Lines (o_)", "Heatmap (heat_)"], help="Visual style for projecting orbital weights", **settings_change)
 
                 proj_opts = []
                 if fb_style == "Scatter (Bubble)":
@@ -206,7 +222,7 @@ def render_dashboard():
                 elif fb_style == "Heatmap (heat_)":
                     proj_opts = ["Total", "Atomic", "Orbital", "Element-Orbital"]
 
-                fb_proj = st.selectbox("Projection Type", proj_opts, help="How to group projected orbitals")
+                fb_proj = st.selectbox("Projection Type", proj_opts, help="How to group projected orbitals", **settings_change)
 
                 mode_map = {
                     "Most Dominant": "most",
@@ -242,7 +258,7 @@ def render_dashboard():
                     a_list, _, _, _ = get_available_channels(paths.get('fatband_dir'))
 
                     st.markdown("**(Optional) Auto-Assign from Structure**")
-                    f_struc = st.file_uploader("Upload .in or .out file", key="u_struc_layer", help="Upload a QE structure file to automatically detect layers based on Z-coordinates")
+                    f_struc = st.file_uploader("Upload .in or .out file", key="u_struc_layer", help="Upload a QE structure file to automatically detect layers based on Z-coordinates", **settings_change)
 
                     auto_top, auto_bot = [], []
                     auto_bottom_name, auto_top_name = None, None
@@ -296,14 +312,15 @@ def render_dashboard():
                         top_title = "Upper layer atoms"
                         if auto_top_name:
                             top_title += f" · {auto_top_name}"
-                        top_atoms = st.multiselect(top_title, a_list, default=auto_top)
+                        top_atoms = st.multiselect(top_title, a_list, default=auto_top, **settings_change)
                         bot_bot_options = [x for x in a_list if x not in top_atoms]
                         valid_auto_bot = [x for x in auto_bot if x in bot_bot_options]
                         bottom_title = "Lower layer atoms"
                         if auto_bottom_name:
                             bottom_title += f" · {auto_bottom_name}"
                         bot_atoms = st.multiselect(
-                            bottom_title, bot_bot_options, default=valid_auto_bot
+                            bottom_title, bot_bot_options, default=valid_auto_bot,
+                            **settings_change,
                         )
 
                         l_map = {}
@@ -328,6 +345,7 @@ def render_dashboard():
                                 "demonstration, or unverified data explicitly."
                             ),
                             placeholder="e.g. QE calculation: PBE, 12×12×1 mesh",
+                            **settings_change,
                         )
 
                 # Dynamic Highlight Channels List
@@ -345,25 +363,25 @@ def render_dashboard():
                     hl_options = ["Mo", "S", "d", "p", "Mo-d"]
 
                 if fb_mode in ['o_orbital', 'o_atomic', 'o_element_orbital']:
-                    args['dual'] = st.checkbox("Dual Channel Mode", help="Highlight two contrasting channels with a diverging colormap")
+                    args['dual'] = st.checkbox("Dual Channel Mode", help="Highlight two contrasting channels with a diverging colormap", **settings_change)
 
                 if args.get('dual'):
                     c_h1, c_h2 = st.columns(2)
                     idx2 = 1 if len(hl_options) > 1 else 0
-                    h1 = c_h1.selectbox("Channel 1", hl_options, index=0)
-                    h2 = c_h2.selectbox("Channel 2", hl_options, index=idx2)
+                    h1 = c_h1.selectbox("Channel 1", hl_options, index=0, **settings_change)
+                    h2 = c_h2.selectbox("Channel 2", hl_options, index=idx2, **settings_change)
                     args['highlight_channel'] = (h1, h2)
                 elif "heat" in fb_mode or fb_mode in ['normal', 'most', 'o_orbital', 'o_atomic', 'o_element_orbital']:
-                    args['highlight_channel'] = st.selectbox("Highlight Channel", hl_options, index=0, help="Specific element/orbital to highlight")
+                    args['highlight_channel'] = st.selectbox("Highlight Channel", hl_options, index=0, help="Specific element/orbital to highlight", **settings_change)
 
                 if "heat" in fb_mode:
-                    args['overlay_bands_in_heat'] = st.checkbox("Overlay Lines", True, help="Add line bands on top of heatmap")
+                    args['overlay_bands_in_heat'] = st.checkbox("Overlay Lines", True, help="Add line bands on top of heatmap", **settings_change)
 
             if pt in ["band", "fatbands"]:
-                args['plot_total_dos'] = st.checkbox("Plot Total DOS side-by-side", value=False, help="Requires DOS file uploaded")
+                args['plot_total_dos'] = st.checkbox("Plot Total DOS side-by-side", value=False, help="Requires DOS file uploaded", **settings_change)
 
             if pt in ["band", "fatbands"]:
-                args['show_band_gap'] = st.checkbox("Show Band Gap Arrow", value=False, help="Detect and annotate the band gap (VBM → CBM) on the plot")
+                args['show_band_gap'] = st.checkbox("Show Band Gap Arrow", value=False, help="Detect and annotate the band gap (VBM → CBM) on the plot", **settings_change)
 
         # --- C. PLOT MODE & STYLE ---
         with tab_style:
@@ -372,37 +390,40 @@ def render_dashboard():
             fig_width = col_w.number_input(
                 "Width (in)", min_value=4.0, max_value=24.0,
                 value=12.0, step=0.5,
+                **style_change,
             )
             fig_height = col_h.number_input(
                 "Height (in)", min_value=3.0, max_value=18.0,
                 value=6.0, step=0.5,
+                **style_change,
             )
             args['figsize'] = (float(fig_width), float(fig_height))
             args['dpi'] = st.number_input(
                 "DPI", min_value=72, max_value=1200, value=200, step=25,
+                **style_change,
             )
 
             c3, c4 = st.columns(2)
             if pt in ["pdos", "dos"]:
-                if st.checkbox("Set Custom Y-Limits", value=False):
-                    args['y_range'] = (c3.number_input("Y-Min", value=0.0, min_value=-100.0, max_value=100.0),
-                                       c4.number_input("Y-Max", value=10.0, min_value=-100.0, max_value=100.0))
+                if st.checkbox("Set Custom Y-Limits", value=False, **style_change):
+                    args['y_range'] = (c3.number_input("Y-Min", value=0.0, min_value=-100.0, max_value=100.0, **style_change),
+                                       c4.number_input("Y-Max", value=10.0, min_value=-100.0, max_value=100.0, **style_change))
                 else:
                     args['y_range'] = None
             else:
-                args['y_range'] = (c3.number_input("Y-Min", value=-3.0, min_value=-50.0, max_value=50.0),
-                                   c4.number_input("Y-Max", value=3.0, min_value=-50.0, max_value=50.0))
+                args['y_range'] = (c3.number_input("Y-Min", value=-3.0, min_value=-50.0, max_value=50.0, **style_change),
+                                   c4.number_input("Y-Max", value=3.0, min_value=-50.0, max_value=50.0, **style_change))
 
             if pt == 'dos' or args.get('plot_total_dos', False):
                 c5, c6 = st.columns(2)
-                use_x = c5.checkbox("Set Custom DOS Limits (X-Axis)", value=False)
+                use_x = c5.checkbox("Set Custom DOS Limits (X-Axis)", value=False, **style_change)
                 if use_x:
-                    args['x_range'] = (0.0, c6.number_input("Max DOS Value", value=10.0))
+                    args['x_range'] = (0.0, c6.number_input("Max DOS Value", value=10.0, **style_change))
                 elif pt == 'dos':
-                    use_x2 = st.checkbox("Set Custom Energy Limits", value=False)
+                    use_x2 = st.checkbox("Set Custom Energy Limits", value=False, **style_change)
                     if use_x2:
-                        args['x_range'] = (c5.number_input("Energy-Min", value=-10.0),
-                                           c6.number_input("Energy-Max", value=10.0))
+                        args['x_range'] = (c5.number_input("Energy-Min", value=-10.0, **style_change),
+                                           c6.number_input("Energy-Max", value=10.0, **style_change))
                     else:
                         args['x_range'] = None
                 else:
@@ -412,26 +433,30 @@ def render_dashboard():
             title_col, title_toggle_col = st.columns([3, 1])
             args['show_title'] = title_toggle_col.checkbox(
                 "Show title", value=True,
+                **style_change,
             )
             custom_title = title_col.text_input(
                 "Plot title",
                 placeholder="Leave blank to use the automatic title",
                 disabled=not args['show_title'],
+                **style_change,
             )
             args['plot_title'] = custom_title.strip() or None
 
             label_x_col, label_y_col = st.columns(2)
             custom_x_label = label_x_col.text_input(
                 "X-axis label", placeholder="Automatic",
+                **style_change,
             )
             custom_y_label = label_y_col.text_input(
                 "Y-axis label", placeholder="Automatic",
+                **style_change,
             )
             args['x_label'] = custom_x_label.strip() or None
             args['y_label'] = custom_y_label.strip() or None
 
             grid_col, legend_col = st.columns(2)
-            args['show_grid'] = grid_col.checkbox("Show grid", value=True)
+            args['show_grid'] = grid_col.checkbox("Show grid", value=True, **style_change)
             args['show_legend'] = legend_col.checkbox(
                 "Show legend / colour scale",
                 value=True,
@@ -439,6 +464,7 @@ def render_dashboard():
                     "Controls categorical legends and the continuous colour "
                     "scale used by line, layer, and heatmap fatbands."
                 ),
+                **style_change,
             )
 
             legend_location_col, legend_title_col = st.columns(2)
@@ -461,11 +487,13 @@ def render_dashboard():
                     "Applies to categorical legends. Continuous colour "
                     "scales remain beside the plot."
                 ),
+                **style_change,
             )
             custom_legend_title = legend_title_col.text_input(
                 "Legend / scale title",
                 placeholder="Optional",
                 disabled=not args['show_legend'],
+                **style_change,
             )
             args['legend_title'] = custom_legend_title.strip() or None
 
@@ -495,6 +523,7 @@ def render_dashboard():
                         "The preview below shows the exact colour order used "
                         "by the generated plot."
                     ),
+                    **style_change,
                 )
                 st.markdown(
                     _colormap_preview_html(args['cmap_name']),
@@ -509,23 +538,23 @@ def render_dashboard():
 
             if pt == "fatbands":
                 c_adv1, c_adv2 = st.columns(2)
-                args['s_min'] = c_adv1.number_input("Min Bubble Size", 1.0, 100.0, 10.0)
-                args['s_max'] = c_adv2.number_input("Max Bubble Size", 10.0, 500.0, 100.0)
-                args['weight_threshold'] = c_adv1.number_input("Weight Threshold", 0.0, 1.0, 0.01)
+                args['s_min'] = c_adv1.number_input("Min Bubble Size", 1.0, 100.0, 10.0, **style_change)
+                args['s_max'] = c_adv2.number_input("Max Bubble Size", 10.0, 500.0, 100.0, **style_change)
+                args['weight_threshold'] = c_adv1.number_input("Weight Threshold", 0.0, 1.0, 0.01, **style_change)
 
                 if "heat_" in args.get('fatbands_mode', ''):
-                    args['heat_vmin'] = c_adv1.number_input("Heatmap Min Value", value=0.0)
-                    args['heat_vmax'] = c_adv2.number_input("Heatmap Max Value", value=0.0)
+                    args['heat_vmin'] = c_adv1.number_input("Heatmap Min Value", value=0.0, **style_change)
+                    args['heat_vmax'] = c_adv2.number_input("Heatmap Max Value", value=0.0, **style_change)
                     if args['heat_vmax'] == 0.0:
                         args['heat_vmax'] = None
 
             if pt == "overlay_band":
                 st.caption("Overlay Appearance")
                 c_o1, c_o2 = st.columns(2)
-                args['label1'] = c_o1.text_input("Label 1", "System A")
-                args['color1'] = c_o1.color_picker("Color 1", "#557A9E")
-                args['label2'] = c_o2.text_input("Label 2", "System B")
-                args['color2'] = c_o2.color_picker("Color 2", "#B06A63")
+                args['label1'] = c_o1.text_input("Label 1", "System A", **style_change)
+                args['color1'] = c_o1.color_picker("Color 1", "#557A9E", **style_change)
+                args['label2'] = c_o2.text_input("Label 2", "System B", **style_change)
+                args['color2'] = c_o2.color_picker("Color 2", "#B06A63", **style_change)
 
     # ==========================================
     # RIGHT COLUMN: EXECUTION

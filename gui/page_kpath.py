@@ -5,11 +5,15 @@ import pandas as pd
 import streamlit as st
 
 from gui.io_helpers import save_file
+from gui.theme import remember_tab, remembered_tabs
 from qeplotter.kpath import (
     build_bz_figure, format_qe_kpoints, parse_path_expression, primary_path,
     recommend_kpath, with_path,
 )
 from qeplotter.structure import read_structure
+
+
+_KPATH_TAB_STATE = "kpath_result_tab"
 
 
 def _display_label(label):
@@ -135,7 +139,10 @@ def render_kpath():
                         config={"displaylogo": False, "scrollZoom": True})
         st.caption("Drag to rotate • scroll to zoom • orange: recommended path • blue: special points")
     with col_data:
-        tabs = st.tabs(["Special points", "QE input", "Details"])
+        tabs = remembered_tabs(
+            ["Special points", "QE input", "Details"],
+            _KPATH_TAB_STATE,
+        )
         with tabs[0]:
             st.dataframe(_point_table(result), hide_index=True, width="stretch",
                          column_config={"k₁": st.column_config.NumberColumn(format="%.6f"),
@@ -145,14 +152,18 @@ def render_kpath():
         with tabs[1]:
             output_mode = st.radio(
                 "QE card format", ["Band path (crystal_b)", "Explicit points (crystal)"],
-                horizontal=True, help="crystal_b is recommended for pw.x bands calculations.")
+                horizontal=True, help="crystal_b is recommended for pw.x bands calculations.",
+                on_change=remember_tab,
+                args=(_KPATH_TAB_STATE, "QE input"),
+            )
             qe_text = format_qe_kpoints(
                 result, explicit=output_mode.startswith("Explicit"))
             st.code(qe_text, language=None, line_numbers=True)
             st.download_button("Download K_POINTS", qe_text, "K_POINTS.dat",
-                               "text/plain", width="stretch")
+                               "text/plain", width="stretch", on_click="ignore")
             st.download_button("Download explicit CSV", _explicit_csv(result),
-                               "kpath.csv", "text/csv", width="stretch")
+                               "kpath.csv", "text/csv", width="stretch",
+                               on_click="ignore")
         with tabs[2]:
             parameters = result["recipe_parameters"]
             parameter_text = (", ".join(f"{name}={value:.8f}" for name, value in parameters.items())

@@ -8,6 +8,7 @@ import pandas as pd
 import streamlit as st
 
 from gui.io_helpers import save_file
+from gui.theme import remember_tab, remembered_tabs
 from qeplotter.kmesh import (
     build_kmesh_figure,
     format_qe_automatic,
@@ -17,6 +18,9 @@ from qeplotter.kmesh import (
     orbit_members,
 )
 from qeplotter.structure import read_structure, structure_summary
+
+
+_KMESH_TAB_STATE = "kmesh_result_tab"
 
 
 def _to_csv(frame):
@@ -328,8 +332,10 @@ def render_kmesh():
             )
 
     st.markdown("#### Export and verification")
-    tab_qe, tab_orbit, tab_mapping, tab_method = st.tabs(
-        ["QE input", "Orbit inspector", "Full mapping", "Method & checks"])
+    tab_qe, tab_orbit, tab_mapping, tab_method = remembered_tabs(
+        ["QE input", "Orbit inspector", "Full mapping", "Method & checks"],
+        _KMESH_TAB_STATE,
+    )
 
     with tab_qe:
         output_mode = st.radio(
@@ -338,6 +344,8 @@ def render_kmesh():
              "Explicit multiplicity IBZ"],
             horizontal=True,
             key="kmesh_qe_output",
+            on_change=remember_tab,
+            args=(_KMESH_TAB_STATE, "QE input"),
         )
         if output_mode == "Recommended automatic grid":
             qe_text = format_qe_automatic(result)
@@ -366,6 +374,7 @@ def render_kmesh():
             file_name,
             "text/plain",
             width="stretch",
+            on_click="ignore",
         )
 
     with tab_orbit:
@@ -377,6 +386,8 @@ def render_kmesh():
                 f"{result['points'][index]['multiplicity']}"
             ),
             key="kmesh_orbit_selection",
+            on_change=remember_tab,
+            args=(_KMESH_TAB_STATE, "Orbit inspector"),
         )
         member_frame = _members_frame(result, selected)
         st.dataframe(
@@ -401,6 +412,8 @@ def render_kmesh():
                 value=result["total_grid_points"] <= 10_000,
                 key="kmesh_prepare_mapping",
                 help="Large CSV tables are generated only on request.",
+                on_change=remember_tab,
+                args=(_KMESH_TAB_STATE, "Full mapping"),
             )
             if prepare_mapping:
                 mapping_frame = _full_mapping_frame(result)
@@ -425,6 +438,7 @@ def render_kmesh():
                     "full_grid_to_ibz.csv",
                     "text/csv",
                     width="stretch",
+                    on_click="ignore",
                 )
             else:
                 st.caption(

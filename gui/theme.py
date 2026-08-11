@@ -245,3 +245,19 @@ def configure_page():
 def inject_css():
     """Inject the shared dark-theme CSS."""
     st.markdown(_CSS, unsafe_allow_html=True)
+
+
+def remember_tab(state_key, tab_name):
+    """Remember the tab that owns a widget before Streamlit reruns the page."""
+    st.session_state[state_key] = tab_name
+
+
+def remembered_tabs(labels, state_key, default=None):
+    """Create tabs whose default survives widget-triggered reruns."""
+    labels = list(labels)
+    fallback = default if default in labels else labels[0]
+    selected = st.session_state.get(state_key, fallback)
+    if selected not in labels:
+        selected = fallback
+        st.session_state[state_key] = selected
+    return st.tabs(labels, default=selected)
