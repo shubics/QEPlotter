@@ -102,6 +102,7 @@ def plot_from_file(
         plot_dos(
             dos_file, fermi_level, shift_fermi, y_range, x_range=x_range, dpi=dpi,
             save_dir=save_dir, savefig=savefig, vertical=vertical,
+            cmap_name=cmap_name,
             **common_style,
         )
     elif pt == 'overlay_band':
@@ -114,6 +115,7 @@ def plot_from_file(
             dpi=dpi,
             color1=color1,
             color2=color2,
+            cmap_name=cmap_name,
             label1=label1,
             label2=label2,
             save_dir=save_dir,
@@ -124,6 +126,7 @@ def plot_from_file(
         plot_pdos_dir(
             pdos_dir, fermi_level, shift_fermi, y_range, dpi=dpi, pdos_mode=pdos_mode,
             save_dir=save_dir, savefig=savefig,
+            cmap_name=cmap_name,
             **common_style,
         )
     elif pt == 'fatbands':

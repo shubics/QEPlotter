@@ -554,15 +554,7 @@ def plot_fatbands(
 
         # ------ PLOTTING PART (shared for all line/layer modes) ------
 
-        # ``tab10`` is categorical and creates abrupt jumps on a continuous
-        # layer-fraction scale. Keep API compatibility while choosing a clear
-        # continuous default for layer plots.
-        effective_cmap = (
-            'coolwarm'
-            if mode == 'layer' and cmap_name == 'tab10'
-            else cmap_name
-        )
-        cmap = plt.get_cmap(effective_cmap)
+        cmap = plt.get_cmap(cmap_name)
 
         norm = plt.Normalize(0.0, 1.0)
 

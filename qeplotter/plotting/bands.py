@@ -13,6 +13,7 @@ from qeplotter.analysis.bandgap import _find_band_gap, _annotate_band_gap
 from qeplotter.plotting.style import (
     apply_axis_style,
     apply_legend,
+    colormap_colors,
     figure_size,
 )
 
@@ -26,6 +27,7 @@ def overlay_band_plot(
     figsize=None, plot_title=None, x_label=None, y_label=None,
     show_title=True, show_grid=True, show_legend=True,
     legend_location='best', legend_title=None,
+    cmap_name='tab10',
 ):
     """
     Overlay two band structures on the same plot.
@@ -36,6 +38,10 @@ def overlay_band_plot(
     if shift_fermi and fermi_level is not None:
         bands1 = bands1 - fermi_level
         bands2 = bands2 - fermi_level
+
+    palette = colormap_colors(cmap_name, 2)
+    color1 = palette[0] if color1 is None else color1
+    color2 = palette[1] if color2 is None else color2
 
     plt.figure(figsize=figure_size(figsize, (8, 6)), dpi=dpi)
 
@@ -165,12 +171,13 @@ def plot_band(
         ax2 = None
 
     if band_mode == 'normal' or band_mode is None:
+        line_color = colormap_colors(cmap_name, 1)[0]
         for band in band_energies:
             for (s,e) in seg_ranges:
                 if e > s:
-                    ax1.plot(x_dist[s:e+1], band[s:e+1], 'k-', lw=1)
+                    ax1.plot(x_dist[s:e+1], band[s:e+1], color=line_color, lw=1)
                 else:
-                    ax1.plot(x_dist[s], band[s], 'k.', markersize=2)
+                    ax1.plot(x_dist[s], band[s], '.', color=line_color, markersize=2)
         title = 'Band Structure'
     else:
 
@@ -280,7 +287,8 @@ def plot_band(
     # --- TOTAL DOS PLOTTING ---
     if plot_total_dos:
         # Side-by-side means Energy on Y, DOS on X (Standard Vertical Layout)
-        ax2.plot(DOS, E_dos, 'k-', lw=1, label='Total DOS')
+        dos_color = colormap_colors(cmap_name, 1)[0]
+        ax2.plot(DOS, E_dos, color=dos_color, lw=1, label='Total DOS')
         ax2.set_xlabel('DOS')
         ax2.set_title("Total DOS")
         

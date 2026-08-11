@@ -13,7 +13,7 @@ from gui.page_plot import _COLORMAP_OPTIONS, _colormap_preview_html
 from qeplotter.api import plot_from_file
 from qeplotter.plotting.dos import plot_dos
 from qeplotter.plotting.fatbands import plot_fatbands
-from qeplotter.plotting.style import figure_size
+from qeplotter.plotting.style import colormap_colors, figure_size
 
 
 class PlotControlTests(unittest.TestCase):
@@ -30,6 +30,7 @@ class PlotControlTests(unittest.TestCase):
             with patch("matplotlib.pyplot.show"):
                 plot_dos(
                     dos_file,
+                    cmap_name="plasma",
                     figsize=(7.5, 4.5),
                     plot_title="Custom DOS",
                     x_label="Custom energy",
@@ -46,6 +47,10 @@ class PlotControlTests(unittest.TestCase):
         self.assertEqual(ax.get_ylabel(), "Custom density")
         self.assertIsNone(ax.get_legend())
         self.assertFalse(any(line.get_visible() for line in ax.get_xgridlines()))
+        np.testing.assert_allclose(
+            matplotlib.colors.to_rgba(ax.lines[0].get_color()),
+            colormap_colors("plasma", 1)[0],
+        )
 
     def test_gui_offers_a_broad_set_of_valid_colormaps(self):
         self.assertGreaterEqual(len(_COLORMAP_OPTIONS), 30)
@@ -60,6 +65,12 @@ class PlotControlTests(unittest.TestCase):
         self.assertIn("10 discrete colours", categorical)
         self.assertIn("low → high", continuous)
         self.assertGreater(categorical.count("#"), continuous.count("#"))
+
+    def test_colormap_sampling_supports_single_and_multiple_series(self):
+        self.assertEqual(len(colormap_colors("viridis", 1)), 1)
+        self.assertEqual(len(colormap_colors("tab10", 4)), 4)
+        self.assertEqual(len(set(colormap_colors("tab10", 4))), 4)
+        self.assertEqual(len(set(colormap_colors("viridis", 4))), 4)
 
     def test_empty_custom_text_preserves_automatic_labels(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -92,6 +103,7 @@ class PlotControlTests(unittest.TestCase):
             "show_legend": False,
             "legend_location": "upper left",
             "legend_title": "Channels",
+            "cmap_name": "Spectral",
         }
         with patch("qeplotter.api.plot_dos") as mocked_plot_dos:
             plot_from_file(plot_type="dos", dos_file="sample.dos", **options)

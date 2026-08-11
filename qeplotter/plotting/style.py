@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import math
 
+from matplotlib import colormaps
+from matplotlib.colors import ListedColormap
+
 
 LEGEND_LOCATIONS = (
     "best",
@@ -17,6 +20,22 @@ LEGEND_LOCATIONS = (
     "upper center",
     "center",
 )
+
+
+def colormap_colors(cmap_name, count):
+    """Return visually separated colours sampled from a Matplotlib colormap."""
+    if count < 0:
+        raise ValueError("count must be zero or greater")
+    if count == 0:
+        return []
+
+    cmap = colormaps.get_cmap(cmap_name)
+    if isinstance(cmap, ListedColormap) and cmap.N <= 20:
+        denominator = max(cmap.N - 1, 1)
+        return [cmap((index % cmap.N) / denominator) for index in range(count)]
+    if count == 1:
+        return [cmap(0.65)]
+    return [cmap(0.08 + 0.84 * index / (count - 1)) for index in range(count)]
 
 
 def display_text(value, default):

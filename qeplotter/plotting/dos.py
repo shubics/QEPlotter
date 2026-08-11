@@ -8,14 +8,19 @@ import re
 import matplotlib.pyplot as plt
 import numpy as np
 
-from qeplotter.plotting.style import apply_axis_style, apply_legend, figure_size
+from qeplotter.plotting.style import (
+    apply_axis_style,
+    apply_legend,
+    colormap_colors,
+    figure_size,
+)
 
 
 def plot_dos(dos_file, fermi_level=None, shift_fermi=False, y_range=None, x_range=None, dpi=None,
         save_dir="saved", savefig=None, vertical=False, figsize=None,
         plot_title=None, x_label=None, y_label=None, show_title=True,
         show_grid=True, show_legend=True, legend_location='best',
-        legend_title=None):
+        legend_title=None, cmap_name='tab10'):
     """
     Plot the total Density of States (DOS) from a QE DOS file.
     """
@@ -34,10 +39,11 @@ def plot_dos(dos_file, fermi_level=None, shift_fermi=False, y_range=None, x_rang
     if shift_fermi and fermi_level is not None:
         E = E - fermi_level
     fig, ax = plt.subplots(figsize=figure_size(figsize, (6, 6)), dpi=dpi)
+    line_color = colormap_colors(cmap_name, 1)[0]
 
     if vertical:
         # DOS on X, Energy on Y
-        ax.plot(DOS, E, 'k-', lw=1, label='Total DOS')
+        ax.plot(DOS, E, color=line_color, lw=1, label='Total DOS')
         if fermi_level is not None:
             y0 = 0.0 if shift_fermi else fermi_level
             ax.axhline(y0, color='r', ls='--', lw=1.2, label=f'Fermi = {fermi_level:.2f} eV')
@@ -50,7 +56,7 @@ def plot_dos(dos_file, fermi_level=None, shift_fermi=False, y_range=None, x_rang
         default_xlabel, default_ylabel = 'DOS', ylabel
     else:
         # Energy on X, DOS on Y
-        ax.plot(E, DOS, 'k-', lw=1, label='Total DOS')
+        ax.plot(E, DOS, color=line_color, lw=1, label='Total DOS')
         if fermi_level is not None:
             x0 = 0.0 if shift_fermi else fermi_level
             ax.axvline(x0, color='r', ls='--', lw=1.2, label=f'Fermi = {fermi_level:.2f} eV')
@@ -94,7 +100,8 @@ def plot_pdos_dir(pdos_dir, fermi_level=None,
                   save_dir="saved", savefig=None, figsize=None,
                   plot_title=None, x_label=None, y_label=None,
                   show_title=True, show_grid=True, show_legend=True,
-                  legend_location='best', legend_title=None):
+                  legend_location='best', legend_title=None,
+                  cmap_name='tab10'):
     """
     Plot projected Density of States (PDOS) from a set of QE projwfc/pdos files.
     """
@@ -150,8 +157,10 @@ def plot_pdos_dir(pdos_dir, fermi_level=None,
     if not grouped:
         raise RuntimeError("No PDOS channels matched; check filenames and pdos_mode")
     fig, ax = plt.subplots(figsize=figure_size(figsize, (6, 6)), dpi=dpi)
-    for k, pd in sorted(grouped.items()):
-        ax.plot(E, pd, lw=1, label=k)
+    grouped_items = sorted(grouped.items())
+    channel_colors = colormap_colors(cmap_name, len(grouped_items))
+    for (k, pd), color in zip(grouped_items, channel_colors):
+        ax.plot(E, pd, color=color, lw=1, label=k)
     if fermi_level is not None:
         x0 = 0.0 if shift_fermi else fermi_level
         ax.axvline(x0, color='r', ls='--', lw=1.2, label=f'Fermi = {fermi_level:.2f} eV')

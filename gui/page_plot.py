@@ -498,43 +498,33 @@ def render_dashboard():
             args['legend_title'] = custom_legend_title.strip() or None
 
             st.markdown("##### Colors & Visuals")
-            uses_cmap = pt == 'fatbands' or (
+            if fatband_mode == 'layer':
+                default_cmap = 'coolwarm'
+            elif uses_colour_scale:
+                default_cmap = 'viridis'
+            elif pt in ('pdos', 'overlay_band') or (
                 pt == 'band' and args.get('band_mode', 'normal') != 'normal'
-            )
-            if uses_cmap:
-                if uses_colour_scale:
-                    cmap_options = tuple(
-                        name for name in _COLORMAP_OPTIONS
-                        if name not in _CATEGORICAL_COLORMAPS
-                    )
-                    default_cmap = (
-                        'coolwarm' if fatband_mode == 'layer' else 'viridis'
-                    )
-                else:
-                    cmap_options = _COLORMAP_OPTIONS
-                    default_cmap = 'tab10'
-
-                args['cmap_name'] = st.selectbox(
-                    "Colormap",
-                    cmap_options,
-                    index=cmap_options.index(default_cmap),
-                    format_func=_colormap_option_label,
-                    help=(
-                        "The preview below shows the exact colour order used "
-                        "by the generated plot."
-                    ),
-                    **style_change,
-                )
-                st.markdown(
-                    _colormap_preview_html(args['cmap_name']),
-                    unsafe_allow_html=True,
-                )
+            ):
+                default_cmap = 'tab10'
             else:
-                args['cmap_name'] = 'tab10'
-                st.caption(
-                    "This plot mode uses fixed line colours; switch to a "
-                    "projected band or fatband mode to select a colormap."
-                )
+                default_cmap = 'viridis'
+
+            args['cmap_name'] = st.selectbox(
+                "Colormap",
+                _COLORMAP_OPTIONS,
+                index=_COLORMAP_OPTIONS.index(default_cmap),
+                format_func=_colormap_option_label,
+                help=(
+                    "Available for every plot type. Single curves take a "
+                    "representative colour; multiple series sample distinct "
+                    "colours; continuous plots use the full scale."
+                ),
+                **style_change,
+            )
+            st.markdown(
+                _colormap_preview_html(args['cmap_name']),
+                unsafe_allow_html=True,
+            )
 
             if pt == "fatbands":
                 c_adv1, c_adv2 = st.columns(2)
@@ -552,9 +542,19 @@ def render_dashboard():
                 st.caption("Overlay Appearance")
                 c_o1, c_o2 = st.columns(2)
                 args['label1'] = c_o1.text_input("Label 1", "System A", **style_change)
-                args['color1'] = c_o1.color_picker("Color 1", "#557A9E", **style_change)
                 args['label2'] = c_o2.text_input("Label 2", "System B", **style_change)
-                args['color2'] = c_o2.color_picker("Color 2", "#B06A63", **style_change)
+                override_overlay_colors = st.checkbox(
+                    "Override colormap colours",
+                    value=False,
+                    help="Use two manually selected colours instead of the colormap.",
+                    **style_change,
+                )
+                if override_overlay_colors:
+                    args['color1'] = c_o1.color_picker("Color 1", "#557A9E", **style_change)
+                    args['color2'] = c_o2.color_picker("Color 2", "#B06A63", **style_change)
+                else:
+                    args['color1'] = None
+                    args['color2'] = None
 
     # ==========================================
     # RIGHT COLUMN: EXECUTION

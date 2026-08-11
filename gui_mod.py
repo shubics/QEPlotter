@@ -2,12 +2,12 @@
 QEPlotter — Streamlit dashboard (modular edition).
 
 Thin router over the ``gui/`` package:
-  • Visualization  → band / fatbands / DOS / PDOS / overlay  (gui.page_plot)
   • Structure      → CIF / POSCAR / QE 3D viewer + analysis   (gui.page_structure)
   • K-path         → native high-symmetry path + first BZ     (gui.page_kpath)
   • K-grid         → native uniform-grid IBZ reduction         (gui.page_kmesh)
   • Representations → Γ-point irreps, SALCs, orbital matching (gui.page_symmetry_representations)
   • Tools          → converters, gap detector, bilayer        (gui.page_tools)
+  • Visualization  → band / fatbands / DOS / PDOS / overlay  (gui.page_plot)
 
 Run with:  streamlit run gui_mod.py
 """
@@ -49,14 +49,12 @@ def main():
         st.divider()
         mode = st.radio(
             "Workspace",
-            ["Plots & Data", "Crystal Structure",
-             "K-path & Brillouin Zone", "K-grid & IBZ",
-             "Symmetry Representations", "Utilities"],
+            ["Crystal Structure", "K-path & Brillouin Zone",
+             "K-grid & IBZ", "Symmetry Representations",
+             "Utilities", "Plots & Data"],
         )
 
-    if mode == "Plots & Data":
-        render_dashboard()
-    elif mode == "Crystal Structure":
+    if mode == "Crystal Structure":
         render_structure()
     elif mode == "K-path & Brillouin Zone":
         render_kpath()
@@ -64,8 +62,10 @@ def main():
         render_kmesh()
     elif mode == "Symmetry Representations":
         render_symmetry_representations()
-    else:
+    elif mode == "Utilities":
         render_tools()
+    else:
+        render_dashboard()
 
 
 if __name__ == "__main__":
