@@ -87,34 +87,6 @@ qep.plot_from_file(
 > native K-path/K-grid engines, symmetry representations, and full v2 web
 > interface are available only through `qeplotter` and `gui_mod.py`.
 
----
-
-## 🖥️ Interface Preview
-
-The views below were generated from the included
-[2H monolayer MoS₂ structure](examples/structures/MoS2_monolayer.vasp).
-QEPlotter identifies its `P-6m2` symmetry, constructs the conventional
-high-symmetry band path, and reduces a `6 × 6 × 1` mesh to seven irreducible
-k-points. The symmetry view shows the calculated Mo d-orbital representation
-at Γ. The final plot uses a historical QE-format WS₂/MoS₂ example bundled with
-the repository. Its original calculation inputs and provenance are not included,
-so the figure is labelled as example data rather than presented as a validated
-scientific result. See the [dataset provenance note](examples/nsp_demo/README.md).
-
-<p align="center">
-  <img src="docs/images/mos2-structure-explorer.jpg" width="49%" alt="MoS2 monolayer in the QEPlotter crystal structure explorer">
-  <img src="docs/images/mos2-kpath.jpg" width="49%" alt="MoS2 high-symmetry path and Brillouin zone in QEPlotter">
-</p>
-
-<p align="center">
-  <img src="docs/images/mos2-irreducible-kgrid.jpg" width="49%" alt="MoS2 irreducible 6 by 6 by 1 k-grid in QEPlotter">
-  <img src="docs/images/mos2-symmetry-representations.jpg" width="49%" alt="MoS2 d-orbital symmetry representation at Gamma in QEPlotter">
-</p>
-
-<p align="center">
-  <img src="examples/nsp_demo/outputs/nsp_layer.png" width="760" alt="WS2 and MoS2 layer-resolved fatbands with material-aware colour scale">
-</p>
-
 ## 📁 Project Structure
 
 ```
@@ -180,7 +152,7 @@ This is the library's most advanced feature, visualizing the contribution of spe
 #### C. Layer-Resolved Plots
 Useful for **Van der Waals heterostructures**.
 *   **Input**: A dictionary mapping atom labels to `bottom` or `top`.
-    *   *Example*: `{'W1': 'bottom', 'S3': 'bottom', 'Mo2': 'top'}`
+    *   *Example*: `{'W1': 'bottom', 'S4': 'bottom', 'Mo2': 'top'}`
 *   **Process**: The code aggregates both layer projections and uses a continuous bottom → mixed → top colour scale.
 *   **Material-aware labels**: The formulas at both colour-bar ends are inferred from the assigned atom labels (for example, `WS₂` and `MoS₂`) instead of showing generic Top/Bottom text.
 *   **Auto-Detection**: The GUI can automatically assign layers from a structure file using PBC-aware median splitting and previews the inferred material formulas.
@@ -205,12 +177,27 @@ Users can choose the full recommendation, its primary continuous branch, or
 compose a custom route such as `Γ-X-M-Γ | R-X`; all exports and the 3D path update
 to match the selected alternative.
 
+The example below uses the included
+[2H monolayer MoS₂ structure](examples/structures/MoS2_monolayer.vasp) and its
+automatically selected conventional high-symmetry path.
+
+<p align="center">
+  <img src="docs/images/mos2-kpath.jpg" width="760" alt="MoS2 high-symmetry path and Brillouin zone in QEPlotter">
+</p>
+
 #### Irreducible K-grid
 The separate **K-grid & IBZ** page reduces uniform SCF/NSCF meshes to
 irreducible Brillouin-zone representatives with multiplicities, normalized
 weights, complete orbit mapping, and QE-ready output. spglib supplies only the
 crystal's spatial symmetry operations; QEPlotter performs the shifted-grid
 compatibility checks and exact integer-address orbit reduction itself.
+
+For the same MoS₂ structure, a `6 × 6 × 1` mesh is reduced to seven
+irreducible k-points with normalized weights.
+
+<p align="center">
+  <img src="docs/images/mos2-irreducible-kgrid.jpg" width="760" alt="MoS2 irreducible 6 by 6 by 1 k-grid in QEPlotter">
+</p>
 
 See [Irreducible k-grid engine](docs/irreducible-k-grid.md) for the algorithm,
 coordinate convention, magnetic/time-reversal considerations, and validation
@@ -228,6 +215,13 @@ therefore allowed to interact by symmetry. The result is structure-derived;
 assigning irreps to individual electronic bands additionally requires QE
 wavefunctions and is intentionally reported as a separate future capability.
 
+The screenshot shows the Mo d-orbital representation at Γ for the included
+2H monolayer MoS₂ structure.
+
+<p align="center">
+  <img src="docs/images/mos2-symmetry-representations.jpg" width="760" alt="MoS2 d-orbital symmetry representation at Gamma in QEPlotter">
+</p>
+
 Example: for the four H `1s` orbitals in the tetrahedral CH₄ validation
 structure, the complete 24-operation `T_d` analysis gives:
 
@@ -242,6 +236,16 @@ crystallographic point groups.
 See [Symmetry and Orbital Representations](docs/symmetry-representations.md)
 for the equations, basis conventions, SALC construction, validation table, and
 scientific limits.
+
+#### 🧊 Crystal Structure Explorer
+The browser-based explorer reads common periodic structure formats, renders an
+interactive 3D cell, and presents symmetry, bonds, angles, and bilayer stacking
+in separate views. Atom identities can be pinned in the model, while Top,
+Front, Right, and Left controls provide reproducible viewing directions.
+
+<p align="center">
+  <img src="docs/images/mos2-structure-explorer.jpg" width="760" alt="MoS2 monolayer in the QEPlotter crystal structure explorer">
+</p>
 
 #### 🔍 Band Gap Detector
 Two detection methods with automatic fallback:
@@ -518,6 +522,8 @@ The colour-bar endpoints are derived automatically from `layer_map`: `WS₂` at
 the lower-layer end and `MoS₂` at the upper-layer end. The same material names
 also appear in the plot title. For publication or scientific comparison, use
 your own traceable QE outputs and record the calculation details in `data_note`.
+This repository example is historical QE-format data whose original calculation
+inputs are unavailable; see its [provenance note](examples/nsp_demo/README.md).
 
 <p align="center">
   <img src="examples/nsp_demo/outputs/nsp_layer.png" width="700" alt="WS2 and MoS2 layer-resolved fatbands">
