@@ -1,7 +1,8 @@
 """
 QEPlotter – Quantum ESPRESSO plotting toolkit.
 
-This package provides the same functionality as qep.py, split into modules:
+This package is the maintained modular implementation evolved from the archived
+``archive/monolithic/qep.py`` script:
   - core/utils.py    : shared constants and helpers
   - core/io.py       : file parsers (kpath, bands, fatbands)
   - plotting/bands.py    : band structure plotting

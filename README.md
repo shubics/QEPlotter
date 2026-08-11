@@ -3,6 +3,7 @@
 
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![QEPlotter 2.0](https://img.shields.io/badge/QEPlotter-2.0-7893AE.svg)](https://github.com/shubics/QEPlotter)
+[![Tests](https://github.com/shubics/QEPlotter/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/shubics/QEPlotter/actions/workflows/tests.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Streamlit Cloud](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://qepweb.streamlit.app)
 [![Streamlit](https://img.shields.io/badge/Streamlit-FF4B4B?style=flat&logo=Streamlit&logoColor=white)](https://streamlit.io)
@@ -19,18 +20,25 @@ It provides a unified API to generate publication-ready plots (Bands, Fatbands, 
 ```bash
 git clone https://github.com/shubics/QEPlotter.git
 cd QEPlotter
-pip install -r requirements.txt
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -e .
 ```
+
+On Windows PowerShell, activate the environment with
+`.venv\Scripts\Activate.ps1` instead.
 
 ### 2. Run the GUI Dashboard
 
 The easiest way to use QEPlotter is via the interactive web dashboard:
 
 ```bash
-streamlit run gui_mod.py
+python -m streamlit run gui_mod.py
 ```
 
-> **Note:** `gui_app.py` is also available for legacy monolithic `qep.py` compatibility, but `gui_mod.py` powered by the `qeplotter` package is the recommended interface.
+> **Note:** QEPlotter 2.0 is implemented by `gui_mod.py` and the modular
+> `qeplotter` package. The former monolithic script and GUI are preserved under
+> [`archive/monolithic/`](archive/monolithic/) for older workflows.
 
 ---
 
@@ -47,12 +55,10 @@ streamlit run gui_mod.py
 - **Irreducible K-grid Engine**: Exact integer-orbit reduction, weights, full-grid mapping, 3D IBZ inspection, and QE export from structure symmetry.
 - **Symmetry Representations**: Γ-point reducible characters, numerical irreducible decomposition, SALCs, and symmetry-allowed `s/p/d` orbital matching.
 
-### 📦 **Python API (Two Ways to Use)**
+### 📦 **Python API**
 
-You have two options for using the Python API. **Both produce the exact same results with identical parameters.**
-
-#### **Option 1: Modular Package ✅ (Recommended)**
-The core is available as a clean, structured package (`qeplotter/`).
+#### **Modular Package ✅ (Recommended)**
+The maintained API is provided by the structured `qeplotter/` package.
 ```python
 from qeplotter import plot_from_file
 
@@ -66,9 +72,17 @@ plot_from_file(
 )
 ```
 
-#### **Option 2: Standalone Script (`qep.py`)**
-If you only need the legacy plotting and converter API in a portable,
-single-file form, copy `qep.py` to your project directory.
+#### **Archived Standalone Script**
+The former single-file API is retained at
+[`archive/monolithic/qep.py`](archive/monolithic/qep.py). Its plotting API aims
+to remain compatible where practical, but the modular package is canonical and
+receives all new features and tests. For an older workflow that still requires
+`import qep`, copy the archived file into that workflow's directory:
+
+```bash
+cp archive/monolithic/qep.py ./qep.py
+```
+
 ```python
 import qep
 
@@ -82,45 +96,17 @@ qep.plot_from_file(
 )
 ```
 
-> **Note:** All examples below use the maintained modular package. The
-> standalone script retains the plotting API, but the Structure Explorer,
-> native K-path/K-grid engines, symmetry representations, and full v2 web
-> interface are available only through `qeplotter` and `gui_mod.py`.
+> **Note:** All examples below use the maintained modular package. Structure,
+> K-path/K-grid, and symmetry tools are available only through the modular v2
+> application.
 
-## 📁 Project Structure
+## 📚 Documentation
 
-```
-QEPlotter/
-├── gui_mod.py              # 🖥  Main Streamlit GUI (uses modular package)
-├── gui_app.py              # 🖥  Legacy GUI (uses monolithic qep.py)
-│
-├── qeplotter/              # 📦 Core modular Python package
-│   ├── __init__.py         #     Package exports
-│   ├── api.py              #     plot_from_file() dispatcher
-│   ├── core/
-│   │   ├── io.py           #     Parsers: K-path, band files, fatband files
-│   │   └── utils.py        #     Helpers (strip_number, etc.)
-│   ├── plotting/
-│   │   ├── bands.py        #     Band structure + colored band modes
-│   │   ├── dos.py          #     Total DOS + PDOS
-│   │   └── fatbands.py     #     Bubble, Line, Heatmap, Layer fatbands
-│   ├── analysis/
-│   │   ├── bandgap.py      #     Band gap detection + plot annotation
-│   │   └── bilayer.py      #     Structure analysis (stacking, interlayer distance)
-│   ├── structure/           #     Multi-format structures, symmetry, bonds, browser 3D
-│   ├── kpath/               #     Native K-path recipes + Wigner–Seitz BZ geometry
-│   ├── kmesh/               #     Native uniform-grid → irreducible-BZ reducer
-│   ├── symmetry/            #     Γ representations, character decomposition + SALCs
-│   └── converters/
-│       ├── fatbands.py     #     proj.out → pdos converter (consistent grid)
-│       └── soc.py          #     SOC (j,mj) → (l,ml) basis converter
-│
-├── qep.py                  # 📄 Standalone monolithic script (all-in-one)
-├── requirements.txt        # Python dependencies
-├── pyproject.toml          # Modern Python build configuration
-├── setup.py                # pip install support
-└── examples/               # Sample QE outputs for testing
-```
+- [Plotting API reference](docs/plotting-api.md)
+- [Project layout and archive policy](docs/project-layout.md)
+- [Irreducible k-grid engine](docs/irreducible-k-grid.md)
+- [Symmetry and orbital representations](docs/symmetry-representations.md)
+- [Bilayer stacking analysis](docs/stacking-analysis.md)
 
 ---
 
@@ -286,73 +272,8 @@ Quantum ESPRESSO's `projwfc.x` has known quirks.
 
 ---
 
-## 🎛️ Complete Parameter Reference
-
-The `plot_from_file` function is the main entry point. Below is the **exhaustive list** of all available arguments.
-
-### Core Parameters
-
-| Parameter | Type | Default | Description |
-|:---|:---|:---|:---|
-| **`plot_type`** | `str` | `'band'` | **Required**. Options: `'band'`, `'dos'`, `'pdos'`, `'fatbands'`, `'overlay_band'`. |
-| **`band_file`** | `str` | `None` | Path to QE band file (`.gnu`). Required for Band/Fatbands. |
-| **`kpath_file`** | `str` | `None` | Path to K-path file (`crystal_b`). Required for Band/Fatbands. |
-| **`fermi_level`** | `float` | `None` | Fermi energy (eV). Essential for energy alignment. |
-| **`shift_fermi`** | `bool` | `False` | Moves Fermi level to 0 eV if `fermi_level` is provided. |
-| **`y_range`** | `tuple` | `None` | Min/Max Y-axis limits. Example: `(-5, 5)`. |
-| **`dpi`** | `int` | `None` | Resolution for saved figures. |
-| **`save_dir`** | `str` | `'saved'` | Directory to save output images. |
-| **`savefig`** | `str` | `None` | Filename to save plot (e.g., `'fig1.png'`). If `None`, shows window. |
-
-### Band & Fatband Parameters
-
-| Parameter | Type | Default | Description |
-|:---|:---|:---|:---|
-| **`band_mode`** | `str` | `'normal'` | Band coloring: `'normal'`, `'atomic'`, `'orbital'`, `'element_orbital'`, `'most'`. |
-| **`fatband_dir`** | `str` | `None` | Folder with `projwfc.x` outputs. Required for Fatbands. |
-| **`fatbands_mode`** | `str` | `'most'` | Fatband style: `'most'`, `'atomic'`, `'orbital'`, `'heat_*'`, `'layer'`, `'o_*'`. |
-| **`spin`** | `bool` | `False` | Enable spin-polarized plotting. |
-| **`sub_orb`** | `bool` | `False` | Split orbitals into sub-components ($d_{z^2}$, etc.). |
-| **`highlight_channel`** | `str/tuple` | `None` | Atoms/orbitals to highlight. Ex: `'Mo'` or `('Mo', 'S')`. |
-| **`dual`** | `bool` | `False` | Two-channel comparison in Line mode. |
-| **`layer_assignment`** | `dict` | `None` | Layer Mode: map every atom to `'top'` or `'bottom'`; material formulas are inferred for the colour scale. |
-| **`data_note`** | `str` | `None` | Optional provenance/status footer. Mark synthetic, demonstration, or unverified data directly on the figure. |
-| **`s_min`** | `float` | `10` | Minimum marker size (bubble plots). |
-| **`s_max`** | `float` | `100` | Maximum marker size (bubble plots). |
-| **`weight_threshold`** | `float` | `0.01` | Ignore orbital weights below this value. |
-| **`cmap_name`** | `str` | `'tab10'` | Matplotlib colormap name. |
-| **`show_band_gap`** | `bool` | `False` | Detect and annotate VBM/CBM band gap on the plot. |
-| **`scf_file`** | `str` | `None` | Path to `scf.out` for accurate SCF-based gap detection. |
-
-### DOS Parameters
-
-| Parameter | Type | Default | Description |
-|:---|:---|:---|:---|
-| **`dos_file`** | `str` | `None` | Path to `dos.x` output. Required for DOS plots. |
-| **`pdos_dir`** | `str` | `None` | Folder with `pdos` files. Required for PDOS plots. |
-| **`pdos_mode`** | `str` | `'atomic'` | PDOS grouping: `'atomic'`, `'orbital'`, `'element_orbital'`. |
-| **`plot_total_dos`** | `bool` | `False` | Plot Total DOS side panel with Band/Fatband plots. |
-| **`x_range`** | `tuple` | `None` | DOS axis range for side panel. |
-| **`vertical`** | `bool` | `False` | Rotate DOS plot (Energy on Y-axis). |
-
-### Heatmap Parameters
-
-| Parameter | Type | Default | Description |
-|:---|:---|:---|:---|
-| **`overlay_bands_in_heat`** | `bool` | `False` | Draw band lines on top of heatmap. |
-| **`heat_vmin`** | `float` | `None` | Minimum for heatmap color normalization. |
-| **`heat_vmax`** | `float` | `None` | Maximum for heatmap color normalization. |
-
-### Overlay Parameters
-
-| Parameter | Type | Default | Description |
-|:---|:---|:---|:---|
-| **`band_file2`** | `str` | `None` | Path to second band file. |
-| **`kpath_file2`** | `str` | `None` | Path to second K-path file. |
-| **`label1`** | `str` | `'Band 1'` | Legend label for first band. |
-| **`label2`** | `str` | `'Band 2'` | Legend label for second band. |
-| **`color1`** | `str` | `'red'` | Color for first band. |
-| **`color2`** | `str` | `'blue'` | Color for second band. |
+For the complete `plot_from_file()` signature and parameter semantics, see the
+[plotting API reference](docs/plotting-api.md).
 
 ---
 
