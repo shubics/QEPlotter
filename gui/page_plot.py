@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 
 from qeplotter.api import plot_from_file
 from gui.io_helpers import save_file, get_fermi_from_scf, get_available_channels
+from qeplotter.plotting.fatbands import _layer_material_labels
 
 
 def render_dashboard():
@@ -160,13 +161,17 @@ def render_dashboard():
 
                 # Layer Assignment Logic
                 if base_m == 'layer':
-                    st.caption("Layer Mapping (Assign 'top' or 'bottom' to atoms)")
+                    st.caption(
+                        "Assign atoms to the two layers. Their material formulas "
+                        "are inferred automatically for the plot legend."
+                    )
                     a_list, _, _, _ = get_available_channels(paths.get('fatband_dir'))
 
                     st.markdown("**(Optional) Auto-Assign from Structure**")
                     f_struc = st.file_uploader("Upload .in or .out file", key="u_struc_layer", help="Upload a QE structure file to automatically detect layers based on Z-coordinates")
 
                     auto_top, auto_bot = [], []
+                    auto_bottom_name, auto_top_name = None, None
                     if f_struc:
                         try:
                             from qeplotter.analysis.bilayer import parse_qe_block
@@ -197,17 +202,35 @@ def render_dashboard():
                                             auto_top.append(labels[i])
                                         else:
                                             auto_bot.append(labels[i])
-                                st.success("Layers correctly detected via median splitting!")
+                                auto_map = {
+                                    **{atom: 'top' for atom in auto_top},
+                                    **{atom: 'bottom' for atom in auto_bot},
+                                }
+                                auto_bottom_name, auto_top_name = _layer_material_labels(
+                                    auto_top + auto_bot, auto_map
+                                )
+                                st.success(
+                                    f"Layers detected: {auto_bottom_name} → "
+                                    f"{auto_top_name}"
+                                )
                         except Exception as e:
                             st.warning(f"Could not auto-detect layers: {e}")
 
                     if not a_list:
                         st.warning("Please upload PDOS files in the Data tab to enable layer mapping.")
                     else:
-                        top_atoms = st.multiselect("Top Layer Atoms", a_list, default=auto_top)
+                        top_title = "Upper layer atoms"
+                        if auto_top_name:
+                            top_title += f" · {auto_top_name}"
+                        top_atoms = st.multiselect(top_title, a_list, default=auto_top)
                         bot_bot_options = [x for x in a_list if x not in top_atoms]
                         valid_auto_bot = [x for x in auto_bot if x in bot_bot_options]
-                        bot_atoms = st.multiselect("Bottom Layer Atoms", bot_bot_options, default=valid_auto_bot)
+                        bottom_title = "Lower layer atoms"
+                        if auto_bottom_name:
+                            bottom_title += f" · {auto_bottom_name}"
+                        bot_atoms = st.multiselect(
+                            bottom_title, bot_bot_options, default=valid_auto_bot
+                        )
 
                         l_map = {}
                         for a in top_atoms:
@@ -216,6 +239,14 @@ def render_dashboard():
                             l_map[a] = 'bottom'
                         if l_map:
                             args['layer_assignment'] = l_map
+                            if len(l_map) == len(a_list):
+                                bottom_name, top_name = _layer_material_labels(
+                                    a_list, l_map
+                                )
+                                st.info(
+                                    f"Plot colour scale: **{bottom_name}** → "
+                                    f"mixed → **{top_name}**"
+                                )
 
                 # Dynamic Highlight Channels List
                 atoms, elements, orbitals, exp_orbs = get_available_channels(paths.get('fatband_dir'))
@@ -287,7 +318,13 @@ def render_dashboard():
                     args['x_range'] = None
 
             st.markdown("##### Colors & Visuals")
-            args['cmap_name'] = st.selectbox("Colormap", ["tab10", "magma", "viridis", "jet", "coolwarm", "bwr"], help="Matplotlib colormap")
+            cmap_options = ["tab10", "magma", "viridis", "jet", "coolwarm", "bwr"]
+            if args.get('fatbands_mode') == 'layer':
+                cmap_options = ["coolwarm", "viridis", "bwr", "magma", "jet"]
+            args['cmap_name'] = st.selectbox(
+                "Colormap", cmap_options,
+                help="Continuous colour scale used for projected band weights",
+            )
 
             if pt == "fatbands":
                 c_adv1, c_adv2 = st.columns(2)

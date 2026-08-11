@@ -15,6 +15,7 @@ from qeplotter.api import launch_gui
 from qeplotter.converters.soc import _cg_prob
 from qeplotter.core.io import read_band_xdistances
 from qeplotter.plotting.dos import plot_pdos_dir
+from qeplotter.plotting.fatbands import _layer_material_labels
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -75,6 +76,28 @@ class GeneralRegressionTests(unittest.TestCase):
             axis = plt.gca()
             self.assertEqual(len(axis.lines), 2)  # one PDOS curve + one Fermi line
             plt.close(axis.figure)
+
+    def test_layer_legend_uses_material_formulas(self):
+        atom_names = ["W1", "Mo2", "S3", "S4", "S5", "S6"]
+        assignment = {
+            "W1": "bottom", "S3": "bottom", "S4": "bottom",
+            "Mo2": "top", "S5": "top", "S6": "top",
+        }
+        self.assertEqual(
+            _layer_material_labels(atom_names, assignment),
+            ("WS₂", "MoS₂"),
+        )
+
+    def test_identical_layer_formulas_keep_lower_upper_identity(self):
+        atom_names = ["Mo1", "S2", "S3", "Mo4", "S5", "S6"]
+        assignment = {
+            "Mo1": "bottom", "S2": "bottom", "S3": "bottom",
+            "Mo4": "top", "S5": "top", "S6": "top",
+        }
+        self.assertEqual(
+            _layer_material_labels(atom_names, assignment),
+            ("MoS₂ · lower", "MoS₂ · upper"),
+        )
 
     def test_uploaded_filename_cannot_escape_session_directory(self):
         uploaded = Mock()

@@ -45,10 +45,50 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import matplotlib.collections as mcoll
+from ase import Atoms
+from ase.data import atomic_numbers
 
 
 def strip_number(atom_label):
     return re.sub(r"\d+$", "", atom_label)
+
+
+_SUBSCRIPT = str.maketrans("0123456789", "₀₁₂₃₄₅₆₇₈₉")
+
+
+def _layer_element(atom_label):
+    prefix = re.match(r"[A-Za-z]{1,2}", str(atom_label))
+    if not prefix:
+        return str(atom_label)
+    candidate = prefix.group(0).capitalize()
+    if candidate in atomic_numbers:
+        return candidate
+    fallback = candidate[0]
+    return fallback if fallback in atomic_numbers else str(atom_label)
+
+
+def _layer_material_labels(atom_names, layer_assignment):
+    """Return readable lower/upper material names from assigned QE atom labels."""
+    grouped = {"bottom": [], "top": []}
+    for atom in atom_names:
+        layer = layer_assignment.get(atom)
+        if layer in grouped:
+            grouped[layer].append(_layer_element(atom))
+
+    formulas = {}
+    for layer, symbols in grouped.items():
+        try:
+            formula = Atoms(symbols=symbols).get_chemical_formula(
+                mode="metal", empirical=True
+            )
+        except (KeyError, ValueError):
+            formula = ""
+        formulas[layer] = formula.translate(_SUBSCRIPT) if formula else layer.title()
+
+    bottom, top = formulas["bottom"], formulas["top"]
+    if bottom == top:
+        return f"{bottom} · lower", f"{top} · upper"
+    return bottom, top
 
 # ==============================
 # K-POINTS / BAND READING UTILS
@@ -1494,7 +1534,10 @@ def plot_fatbands(
             W_sum = W_top + W_bottom
             W_sum[W_sum <= 0] = np.nan
             frac = W_top / W_sum
-            colorbar_label = 'Fraction of Top Layer (0=Bottom, 1=Top)'
+            bottom_material, top_material = _layer_material_labels(
+                atom_names, layer_assignment
+            )
+            colorbar_label = 'Layer character'
 
         elif mode in line_modes:
             if dual:
@@ -1589,7 +1632,12 @@ def plot_fatbands(
                 colorbar_label = f'Fraction of {highlight_channel}'
 
         # ------ PLOTTING (shared for all line/layer modes) ------
-        cmap = plt.get_cmap(cmap_name)
+        effective_cmap = (
+            'coolwarm'
+            if mode == 'layer' and cmap_name == 'tab10'
+            else cmap_name
+        )
+        cmap = plt.get_cmap(effective_cmap)
         norm = plt.Normalize(0.0, 1.0)
         nbands = band_energies.shape[0]
 
@@ -1629,19 +1677,25 @@ def plot_fatbands(
                     if np.isnan(fv): fv = 0.0
                     frac_vals.append(fv)
                 frac_seg = 0.5 * (np.array(frac_vals[:-1]) + np.array(frac_vals[1:]))
-                lc = mcoll.LineCollection(segments, array=frac_seg, cmap=cmap,
-                                          norm=norm, linewidth=2, zorder=1)
+                lc = mcoll.LineCollection(
+                    segments, array=frac_seg, cmap=cmap, norm=norm,
+                    linewidth=2.2, capstyle='round', zorder=2,
+                )
                 ax1.add_collection(lc)
 
         ax1.set_xticks(tick_positions)
-        ax1.set_xticklabels(tick_labels)
+        display_tick_labels = [
+            'Γ' if str(label).strip().upper() in {'G', 'GAMMA'} else label
+            for label in tick_labels
+        ]
+        ax1.set_xticklabels(display_tick_labels)
         ax1.set_xlabel('K-point Path')
         ylabel = 'E - E_F (eV)' if (shift_fermi and fermi_level is not None) else 'Energy (eV)'
         ax1.set_ylabel(ylabel)
         if y_range:
             ax1.set_ylim(y_range)
         if mode == 'layer':
-            ax1.set_title('Fatbands (Layer)')
+            ax1.set_title('Layer-resolved fatbands', pad=12)
         else:
             title_mode = mode if mode != 'normal' else f"Highlight {highlight_channel}"
             ax1.set_title(f'Fatbands ({title_mode})')
@@ -1649,6 +1703,13 @@ def plot_fatbands(
         sm.set_array([])
         cbar = plt.colorbar(sm, ax=ax1, pad=0.02)
         cbar.set_label(colorbar_label)
+        if mode == 'layer':
+            cbar.set_ticks([0.0, 0.5, 1.0])
+            cbar.set_ticklabels([bottom_material, 'Mixed', top_material])
+            cbar.set_label('')
+            cbar.ax.set_title(colorbar_label, fontsize=10, pad=8)
+            cbar.ax.tick_params(length=0, pad=6, labelsize=10)
+            cbar.outline.set_linewidth(0.7)
 
         if overlay_bands_in_heat:
             for band in band_energies:
@@ -1666,7 +1727,11 @@ def plot_fatbands(
                             y = y - fermi_level
                         ax1.plot(x, y, color='lightgray', lw=0.5, zorder=0)
 
-        ax1.grid(True, ls='--', alpha=0.3)
+        ax1.set_axisbelow(True)
+        ax1.margins(x=0)
+        ax1.grid(True, ls='--', lw=0.7, alpha=0.22)
+        if shift_fermi and fermi_level is not None:
+            ax1.axhline(0.0, color='#555555', ls='--', lw=0.9, alpha=0.8, zorder=0)
 
         # Total DOS panel for line/layer modes
         if plot_total_dos:

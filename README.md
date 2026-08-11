@@ -95,7 +95,8 @@ The views below were generated from the included
 [2H monolayer MoS₂ structure](examples/structures/MoS2_monolayer.vasp).
 QEPlotter identifies its `P-6m2` symmetry, constructs the conventional
 high-symmetry band path, and reduces a `6 × 6 × 1` mesh to seven irreducible
-k-points.
+k-points. The symmetry view shows the calculated Mo d-orbital representation
+at Γ. The final plot uses the included WS₂/MoS₂ heterobilayer projection data.
 
 <p align="center">
   <img src="docs/images/mos2-structure-explorer.jpg" width="49%" alt="MoS2 monolayer in the QEPlotter crystal structure explorer">
@@ -103,7 +104,12 @@ k-points.
 </p>
 
 <p align="center">
-  <img src="docs/images/mos2-irreducible-kgrid.jpg" width="760" alt="MoS2 irreducible 6 by 6 by 1 k-grid in QEPlotter">
+  <img src="docs/images/mos2-irreducible-kgrid.jpg" width="49%" alt="MoS2 irreducible 6 by 6 by 1 k-grid in QEPlotter">
+  <img src="docs/images/mos2-symmetry-representations.jpg" width="49%" alt="MoS2 d-orbital symmetry representation at Gamma in QEPlotter">
+</p>
+
+<p align="center">
+  <img src="examples/nsp_demo/outputs/nsp_layer.png" width="760" alt="WS2 and MoS2 layer-resolved fatbands with material-aware colour scale">
 </p>
 
 ## 📁 Project Structure
@@ -170,10 +176,11 @@ This is the library's most advanced feature, visualizing the contribution of spe
 
 #### C. Layer-Resolved Plots
 Useful for **Van der Waals heterostructures**.
-*   **Input**: A dictionary mapping Atom Labels to Layer Names.
-    *   *Example*: `{'Mo1': 'L1', 'S2': 'L1', 'W3': 'L2'}`
-*   **Process**: The code aggregates weights for all atoms in "L1" vs "L2" and plots them with distinct colors (e.g., Blue for L1, Red for L2).
-*   **Auto-Detection**: The GUI can automatically assign layers from a structure file using PBC-aware median splitting.
+*   **Input**: A dictionary mapping atom labels to `bottom` or `top`.
+    *   *Example*: `{'W1': 'bottom', 'S3': 'bottom', 'Mo2': 'top'}`
+*   **Process**: The code aggregates both layer projections and uses a continuous bottom → mixed → top colour scale.
+*   **Material-aware labels**: The formulas at both colour-bar ends are inferred from the assigned atom labels (for example, `WS₂` and `MoS₂`) instead of showing generic Top/Bottom text.
+*   **Auto-Detection**: The GUI can automatically assign layers from a structure file using PBC-aware median splitting and previews the inferred material formulas.
 
 ### 3. Density of States (DOS)
 *   **Total DOS**: Reads standard `dos.x` output. Supports vertical orientation (Energy on Y-axis) for side-by-side comparison with bands.
@@ -301,7 +308,7 @@ The `plot_from_file` function is the main entry point. Below is the **exhaustive
 | **`sub_orb`** | `bool` | `False` | Split orbitals into sub-components ($d_{z^2}$, etc.). |
 | **`highlight_channel`** | `str/tuple` | `None` | Atoms/orbitals to highlight. Ex: `'Mo'` or `('Mo', 'S')`. |
 | **`dual`** | `bool` | `False` | Two-channel comparison in Line mode. |
-| **`layer_assignment`** | `dict` | `None` | Layer Mode: Map atoms to layers. Ex: `{'Mo1': 'top', 'S2': 'bottom'}`. |
+| **`layer_assignment`** | `dict` | `None` | Layer Mode: map every atom to `'top'` or `'bottom'`; material formulas are inferred for the colour scale. |
 | **`s_min`** | `float` | `10` | Minimum marker size (bubble plots). |
 | **`s_max`** | `float` | `100` | Maximum marker size (bubble plots). |
 | **`weight_threshold`** | `float` | `0.01` | Ignore orbital weights below this value. |
@@ -481,23 +488,27 @@ plot_from_file(
 from qeplotter import plot_from_file
 
 layer_map = {
-    'Mo1': 'top', 'S2': 'top', 'S3': 'top',
-    'W4':  'bottom', 'Se5': 'bottom', 'Se6': 'bottom'
+    'W1': 'bottom', 'S3': 'bottom', 'S4': 'bottom',
+    'Mo2': 'top', 'S5': 'top', 'S6': 'top',
 }
 
 plot_from_file(
     plot_type='fatbands',
-    band_file='hetero.bands.gnu',
-    kpath_file='hetero.kpath',
-    fatband_dir='./pdos',
+    band_file='examples/nsp_demo/inputs/nsp-aa.bands.dat.gnu',
+    kpath_file='examples/nsp_demo/inputs/nsp.kpath',
+    fatband_dir='examples/nsp_demo/inputs/nsp_pdos',
     fatbands_mode='layer',
     layer_assignment=layer_map,
-    fermi_level=3.5
+    cmap_name='coolwarm',
+    y_range=(-4, 4),
 )
 ```
 
+The colour-bar endpoints are derived automatically from `layer_map`: `WS₂` at
+the lower-layer end and `MoS₂` at the upper-layer end.
+
 <p align="center">
-  <img src="examples/example_outputs/fatbands_layer.jpeg" width="600" alt="Layer-resolved fatbands">
+  <img src="examples/nsp_demo/outputs/nsp_layer.png" width="700" alt="WS2 and MoS2 layer-resolved fatbands">
 </p>
 
 ### 8. Total DOS

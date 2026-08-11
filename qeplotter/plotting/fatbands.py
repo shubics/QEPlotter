@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import matplotlib.collections as mcoll
 import numpy as np
+from ase import Atoms
 
 from qeplotter.core.io import read_band_xdistances, read_fatband_files
 from qeplotter.core.utils import strip_number
@@ -14,6 +15,32 @@ from qeplotter.analysis.bandgap import _find_band_gap, _annotate_band_gap
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SCRIPT_DIR = os.path.dirname(os.path.dirname(SCRIPT_DIR))
+
+_SUBSCRIPT = str.maketrans("0123456789", "₀₁₂₃₄₅₆₇₈₉")
+
+
+def _layer_material_labels(atom_names, layer_assignment):
+    """Return readable lower/upper material names from assigned QE atom labels."""
+    grouped = {"bottom": [], "top": []}
+    for atom in atom_names:
+        layer = layer_assignment.get(atom)
+        if layer in grouped:
+            grouped[layer].append(strip_number(atom))
+
+    formulas = {}
+    for layer, symbols in grouped.items():
+        try:
+            formula = Atoms(symbols=symbols).get_chemical_formula(
+                mode="metal", empirical=True
+            )
+        except (KeyError, ValueError):
+            formula = ""
+        formulas[layer] = formula.translate(_SUBSCRIPT) if formula else layer.title()
+
+    bottom, top = formulas["bottom"], formulas["top"]
+    if bottom == top:
+        return f"{bottom} · lower", f"{top} · upper"
+    return bottom, top
 
 def plot_fatbands(
     fatband_dir,
@@ -304,7 +331,10 @@ def plot_fatbands(
             W_sum = W_top + W_bottom
             W_sum[W_sum <= 0] = np.nan
             frac = W_top / W_sum  # 1 = all top, 0 = all bottom
-            colorbar_label = 'Fraction of Top Layer (0=Bottom, 1=Top)'
+            bottom_material, top_material = _layer_material_labels(
+                atom_names, layer_assignment
+            )
+            colorbar_label = 'Layer character'
 
         elif mode in line_modes:
 
@@ -468,7 +498,15 @@ def plot_fatbands(
 
         # ------ PLOTTING PART (shared for all line/layer modes) ------
 
-        cmap = plt.get_cmap(cmap_name)
+        # ``tab10`` is categorical and creates abrupt jumps on a continuous
+        # layer-fraction scale. Keep API compatibility while choosing a clear
+        # continuous default for layer plots.
+        effective_cmap = (
+            'coolwarm'
+            if mode == 'layer' and cmap_name == 'tab10'
+            else cmap_name
+        )
+        cmap = plt.get_cmap(effective_cmap)
 
         norm = plt.Normalize(0.0, 1.0)
 
@@ -541,15 +579,20 @@ def plot_fatbands(
 
                 frac_seg = 0.5 * (np.array(frac_vals[:-1]) + np.array(frac_vals[1:]))
 
-                lc = mcoll.LineCollection(segments, array=frac_seg, cmap=cmap,
-
-                                          norm=norm, linewidth=2, zorder=1)
+                lc = mcoll.LineCollection(
+                    segments, array=frac_seg, cmap=cmap, norm=norm,
+                    linewidth=2.2, capstyle='round', zorder=2,
+                )
 
                 ax1.add_collection(lc)
 
         ax1.set_xticks(tick_positions)
 
-        ax1.set_xticklabels(tick_labels)
+        display_tick_labels = [
+            'Γ' if str(label).strip().upper() in {'G', 'GAMMA'} else label
+            for label in tick_labels
+        ]
+        ax1.set_xticklabels(display_tick_labels)
 
         ax1.set_xlabel('K-point Path')
 
@@ -561,7 +604,7 @@ def plot_fatbands(
 
         if mode == 'layer':
 
-            ax1.set_title('Fatbands (Layer)')
+            ax1.set_title('Layer-resolved fatbands', pad=12)
 
         else:
 
@@ -576,6 +619,14 @@ def plot_fatbands(
         cbar = plt.colorbar(sm, ax=ax1, pad=0.02)
 
         cbar.set_label(colorbar_label)
+
+        if mode == 'layer':
+            cbar.set_ticks([0.0, 0.5, 1.0])
+            cbar.set_ticklabels([bottom_material, 'Mixed', top_material])
+            cbar.set_label('')
+            cbar.ax.set_title(colorbar_label, fontsize=10, pad=8)
+            cbar.ax.tick_params(length=0, pad=6, labelsize=10)
+            cbar.outline.set_linewidth(0.7)
 
         if overlay_bands_in_heat:
 
@@ -603,7 +654,11 @@ def plot_fatbands(
 
                         ax1.plot(x, y, color='lightgray', lw=0.5, zorder=0)
 
-        ax1.grid(True, ls='--', alpha=0.3)
+        ax1.set_axisbelow(True)
+        ax1.margins(x=0)
+        ax1.grid(True, ls='--', lw=0.7, alpha=0.22)
+        if shift_fermi and fermi_level is not None:
+            ax1.axhline(0.0, color='#555555', ls='--', lw=0.9, alpha=0.8, zorder=0)
 
 
 
